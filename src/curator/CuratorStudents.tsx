@@ -136,7 +136,7 @@ export default function CuratorStudents() {
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {s.stream && <span className="chip bg-haze !py-0.5 text-[11px] text-brand">{s.stream} поток</span>}
                   <span className="chip bg-sun/30 !py-0.5 text-[11px] text-ink">🎯 {s.points} ұпай</span>
-                  <span className="chip bg-mist !py-0.5 text-[11px] text-ink/60">⭐ {s.xp}</span>
+                  <span className="chip bg-mist !py-0.5 text-[11px] text-ink/60">💎 {s.xp}</span>
                   {s.must_change && <span className="chip bg-rose-50 !py-0.5 text-[11px] text-rose-600">Әлі кірмеген</span>}
                 </div>
               </div>

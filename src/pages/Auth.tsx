@@ -66,7 +66,7 @@ const StudentSide = (
       <Robot className="float relative w-72" />
     </div>
     <h2 className="relative mt-8 max-w-md text-center text-3xl font-extrabold leading-tight">Білім — ең қызықты ойын!</h2>
-    <p className="relative mt-3 max-w-sm text-center text-white/75">Комикс оқы, ойын ойна, XP жина және «Информатика аңызы» деңгейіне жет.</p>
+    <p className="relative mt-3 max-w-sm text-center text-white/75">Комикс оқы, ойын ойна, кристалл жина және «Информатика аңызы» деңгейіне жет.</p>
   </div>
 );
 

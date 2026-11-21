@@ -71,7 +71,7 @@ export function GameCard({ game, best }: { game: Game; best?: number }) {
           <h3 className="mt-2 line-clamp-2 font-extrabold leading-snug">{game.title}</h3>
           <p className="mt-1 line-clamp-2 text-sm text-ink/55">{game.description}</p>
           <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-            <span className="chip bg-sun/30 text-ink">⭐ {game.xp_reward} XP</span>
+            <span className="chip bg-sun/30 text-ink">💎 {game.xp_reward}</span>
             <span className="btn btn-primary btn-sm">Ойнау</span>
           </div>
         </div>

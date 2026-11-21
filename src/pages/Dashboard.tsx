@@ -64,12 +64,12 @@ export default function Dashboard() {
             <div className="mt-6 max-w-md rounded-2xl bg-white/12 p-4 backdrop-blur">
               <div className="flex items-center justify-between text-sm font-bold">
                 <span>{lp.cur.level}-деңгей · {lp.cur.name}</span>
-                <span className="text-sun">⭐ {profile.xp} XP</span>
+                <span className="text-sun">💎 {profile.xp}</span>
               </div>
               <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/20">
                 <div className="h-full rounded-full bg-gradient-to-r from-sun to-[#6AB4CD] transition-[width] duration-1000" style={{ width: `${lp.pct}%` }} />
               </div>
-              <p className="mt-1.5 text-xs text-white/70">{lp.next ? `«${lp.next.name}» деңгейіне ${lp.toNext} XP қалды` : 'Сен ең жоғары деңгейдесің!'}</p>
+              <p className="mt-1.5 text-xs text-white/70">{lp.next ? `«${lp.next.name}» деңгейіне ${lp.toNext} кристалл қалды` : 'Сен ең жоғары деңгейдесің!'}</p>
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link to="/app/games" className="btn btn-sun"><IGame /> Ойын ойнау</Link>
@@ -134,7 +134,7 @@ export default function Dashboard() {
           <ProgressTile icon={<IGame />} tone="#2A6B7F" label="Аяқталған ойындар" value={s ? `${s.games_completed}/${s.games_total}` : '—'} pct={s ? (s.games_completed / Math.max(1, s.games_total)) * 100 : 0} />
           <ProgressTile icon={<IComic />} tone="#63B1CB" label="Оқылған комикстер" value={s ? `${s.comics_read}/${s.comics_total}` : '—'} pct={s ? (s.comics_read / Math.max(1, s.comics_total)) * 100 : 0} />
           <ProgressTile icon={<IBook />} tone="#2FA1C8" label="Оқылған кітаптар" value={s ? `${s.books_read}/${s.books_total}` : '—'} pct={s ? (s.books_read / Math.max(1, s.books_total)) * 100 : 0} />
-          <ProgressTile icon={<IZap />} tone="#4E97A9" label="Жалпы XP" value={profile.xp} pct={lp.pct} sub={`${lp.cur.level}-деңгей · ${lp.cur.name}`} />
+          <ProgressTile icon={<IZap />} tone="#4E97A9" label="Жалпы кристалл" value={profile.xp} pct={lp.pct} sub={`${lp.cur.level}-деңгей · ${lp.cur.name}`} />
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
           <div className="card p-6">
@@ -146,7 +146,7 @@ export default function Dashboard() {
           </div>
           <div className="card p-6">
             <h3 className="flex items-center gap-2 font-extrabold"><ITarget className="h-5 w-5 text-brand" /> Бүгінгі миссиялар</h3>
-            <p className="text-sm text-ink/50">Үшеуін орында — бонус +{data?.settings.xp_missions ?? 25} XP</p>
+            <p className="text-sm text-ink/50">Үшеуін орында — бонус +{data?.settings.xp_missions ?? 25} 💎</p>
             <ul className="mt-4 space-y-2.5">
               {[
                 { ok: s?.missions.game, t: 'Кез келген ойынды аяқта', to: '/app/games' },
@@ -182,7 +182,7 @@ export default function Dashboard() {
 
       {/* 4. Games */}
       <section>
-        <SectionHead title="Ойындарды зертте" sub="Ойнап үйрен, XP жина" action={<Link to="/app/games" className="text-sm font-bold text-brand hover:underline">Барлығы →</Link>} />
+        <SectionHead title="Ойындарды зертте" sub="Ойнап үйрен, кристалл жина" action={<Link to="/app/games" className="text-sm font-bold text-brand hover:underline">Барлығы →</Link>} />
         {loading ? (
           <div className="grid grid-cols-2 gap-5 md:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-72" />)}</div>
         ) : (
@@ -239,7 +239,7 @@ function WeekChart({ week }: { week: { day: string; xp: number }[] }) {
             <div
               className="w-full max-w-11 rounded-xl transition-[height] duration-700"
               style={{ height: `${h}%`, background: today ? 'linear-gradient(180deg,#B5DCE6,#6FB0C1)' : w.xp ? 'linear-gradient(180deg,var(--lavender),var(--brand))' : 'var(--haze)' }}
-              title={`${w.day}: ${w.xp} XP`}
+              title={`${w.day}: ${w.xp} кристалл`}
             />
             <span className={`text-xs font-bold ${today ? 'text-brand' : 'text-ink/40'}`}>{names[new Date(w.day + 'T12:00:00').getDay()]}</span>
           </div>

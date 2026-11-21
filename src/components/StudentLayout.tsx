@@ -140,7 +140,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <div className="mt-3 flex items-center gap-2">
           {curator
             ? <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-haze !px-2 !py-2 text-[13px] text-brand">🧑‍🏫 Куратор</span>
-            : <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-sun/30 !px-2 !py-2 text-[13px] text-ink">⭐ {profile.xp} XP</span>}
+            : <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-sun/30 !px-2 !py-2 text-[13px] text-ink">💎 {profile.xp}</span>}
           <div className="hidden lg:block"><BellButton placement="side" /></div>
           <button className="icon-btn !h-9 !w-9 hover:!text-rose-500" onClick={async () => { await signOut(); navigate('/login'); }} aria-label="Шығу" title="Шығу">
             <ILogout className="h-[18px] w-[18px]" />

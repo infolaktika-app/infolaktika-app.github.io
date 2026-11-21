@@ -35,7 +35,7 @@ export function DailyChallengeCard({ onDone }: { onDone?: () => void }) {
     <div className="card relative h-full overflow-hidden p-6">
       <div className="absolute -right-8 -top-8 h-36 w-36 rounded-full bg-sun/30 blur-2xl" />
       <Star3D className="twinkle absolute right-5 top-5 w-10" />
-      <span className="chip bg-sun/35 text-ink">🎯 Күнделікті тапсырма · +{c?.xp ?? 30} XP</span>
+      <span className="chip bg-sun/35 text-ink">🎯 Күнделікті тапсырма · +{c?.xp ?? 30} 💎</span>
       {loading ? (
         <div className="mt-6 space-y-3"><div className="skeleton h-6 w-3/4" /><div className="skeleton h-11" /><div className="skeleton h-11" /></div>
       ) : !c ? (

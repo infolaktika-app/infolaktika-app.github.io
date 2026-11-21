@@ -12,7 +12,7 @@ export default function Leaderboard() {
   const [q, setQ] = useState('');
   if (loading) return <PageLoader />;
   const rows = data ?? [];
-  if (!rows.length) return <Empty title="Рейтинг бос" text="Бірінші болып XP жина!" />;
+  if (!rows.length) return <Empty title="Рейтинг бос" text="Бірінші болып кристалл жина!" />;
   const top = rows.slice(0, 3);
   const me = rows.find((r) => r.id === profile.id);
   const filtered = rows.filter((r) => !q.trim() || `${r.first_name} ${r.last_name} ${r.username}`.toLowerCase().includes(q.trim().toLowerCase()));
@@ -39,7 +39,7 @@ export default function Leaderboard() {
                   <span className="absolute -bottom-2 -right-2 text-2xl">{medal[place - 1]}</span>
                 </div>
                 <p className="mt-3 max-w-full truncate text-center font-extrabold">{r.first_name}</p>
-                <p className="text-sm font-bold text-sun">{r.xp} XP</p>
+                <p className="text-sm font-bold text-sun">💎 {r.xp}</p>
                 <div className={`mt-3 w-full rounded-t-3xl bg-white/15 backdrop-blur ${h} grid place-items-start justify-center pt-3 text-3xl font-extrabold text-white/80`}>{place}</div>
               </div>
             );
@@ -67,7 +67,7 @@ export default function Leaderboard() {
                 <p className="truncate text-xs font-semibold text-ink/45">@{r.username} · {LEVELS[r.level - 1]?.name}</p>
               </div>
               {r.streak > 1 && <span className="hidden text-sm font-bold text-violet sm:inline">🔥 {r.streak}</span>}
-              <span className="chip bg-sun/30 !px-3 !py-1.5 text-sm text-ink">⭐ {r.xp}</span>
+              <span className="chip bg-sun/30 !px-3 !py-1.5 text-sm text-ink">💎 {r.xp}</span>
             </div>
           );
         })}

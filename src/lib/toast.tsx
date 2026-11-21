@@ -13,7 +13,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setItems((x) => [...x, { ...t, id }]);
     setTimeout(() => setItems((x) => x.filter((i) => i.id !== id)), t.kind === 'error' ? 6000 : 4200);
   }, []);
-  const icon: Record<Kind, string> = { success: '✅', error: '⚠️', info: '💡', xp: '⭐' };
+  const icon: Record<Kind, string> = { success: '✅', error: '⚠️', info: '💡', xp: '💎' };
   return (
     <Ctx.Provider value={{ push }}>
       {children}
@@ -48,8 +48,8 @@ export function useToast() {
     /** Show XP / bonus / achievement toasts from a backend reward result. */
     reward: (r: RewardResult | null | undefined, title = 'Жарайсың!') => {
       if (!r) return;
-      if (r.xp > 0) push({ kind: 'xp', title, body: `+${r.xp} XP` });
-      if (r.bonus > 0) push({ kind: 'xp', title: 'Күнделікті миссиялар орындалды! 🎯', body: `Бонус +${r.bonus} XP` });
+      if (r.xp > 0) push({ kind: 'xp', title, body: `+${r.xp} 💎 кристалл` });
+      if (r.bonus > 0) push({ kind: 'xp', title: 'Күнделікті миссиялар орындалды! 🎯', body: `Бонус +${r.bonus} 💎 кристалл` });
       for (const a of r.achievements ?? []) push({ kind: 'success', title: `Жаңа жетістік ${a.icon}`, body: a.title });
     },
   };

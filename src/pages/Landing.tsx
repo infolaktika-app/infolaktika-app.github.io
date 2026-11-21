@@ -27,7 +27,7 @@ export default function Landing() {
             <span className="bg-gradient-to-r from-brand via-violet to-leaf bg-clip-text text-transparent">IT шебері бол.</span>
           </h1>
           <p className="mt-5 max-w-xl text-lg text-ink/60">
-            INFOLAKTIKA — суретті комикстер, интерактивті ойындар, электрондық кітаптар мен XP жүйесі арқылы
+            INFOLAKTIKA — суретті комикстер, интерактивті ойындар, электрондық кітаптар мен кристалл жинау жүйесі арқылы
             информатиканы қызықты әрі түсінікті ететін оқу кеңістігі.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -63,7 +63,7 @@ export default function Landing() {
           {[
             { art: <Books className="h-24" />, t: 'Комикстер мен кітаптар', d: 'Мұғалім жүктеген PDF комикстерді тікелей сайтта оқы. Қай бетте тоқтағаның сақталады.' },
             { art: <Gamepad className="h-24" />, t: '8 түрлі білім ойыны', d: 'Quiz Battle, код пазл, қатені тап, алгоритмдік лабиринт және тағы басқалары.' },
-            { art: <Trophy className="h-24" />, t: 'XP, деңгей, рейтинг', d: 'Ұпай жина, жетістік ал, күнделікті тапсырма орында, сыныптастарыңмен жарыс.' },
+            { art: <Trophy className="h-24" />, t: 'Кристалл, деңгей, рейтинг', d: 'Ұпай жина, жетістік ал, күнделікті тапсырма орында, сыныптастарыңмен жарыс.' },
           ].map((f) => (
             <div key={f.t} className="card card-hover p-7">
               <div className="mb-4 flex h-28 items-end">{f.art}</div>

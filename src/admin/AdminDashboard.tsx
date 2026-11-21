@@ -83,7 +83,7 @@ export default function AdminDashboard() {
                 <Link to={`/admin/students/${st.id}`} className="flex items-center gap-3 py-3 hover:text-brand">
                   <Avatar id="robot-1" size={36} />
                   <span className="min-w-0 flex-1"><span className="block truncate font-bold">{st.first_name} {st.last_name}</span><span className="text-xs text-ink/45">@{st.username} · {timeAgo(st.created_at)}</span></span>
-                  <span className="chip bg-sun/30 text-ink">⭐ {st.xp}</span>
+                  <span className="chip bg-sun/30 text-ink">💎 {st.xp}</span>
                 </Link>
               </li>
             ))}

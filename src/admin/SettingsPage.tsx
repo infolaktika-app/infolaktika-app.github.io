@@ -34,20 +34,20 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <AdminHeader title="Settings" sub="Платформа баптаулары және XP жүйесі" />
+      <AdminHeader title="Settings" sub="Платформа баптаулары және кристалл жүйесі" />
       <form onSubmit={save} className="card space-y-5 p-6">
         <h2 className="font-extrabold">Оқушыларға арналған хабар</h2>
         <label className="block"><span className="label">Басты беттегі мотивациялық сөз</span>
           <textarea className="input min-h-20" value={s.motivational_message} onChange={(e) => setS({ ...s, motivational_message: e.target.value })} maxLength={200} />
         </label>
-        <h2 className="pt-2 font-extrabold">XP марапаттары</h2>
+        <h2 className="pt-2 font-extrabold">Кристалл марапаттары</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">Комиксті оқып бітіргені үшін</span><input type="number" className="input" value={s.xp_comic} onChange={num('xp_comic')} /></label>
           <label><span className="label">Кітапты оқып бітіргені үшін</span><input type="number" className="input" value={s.xp_book} onChange={num('xp_book')} /></label>
           <label><span className="label">Күнделікті тапсырма</span><input type="number" className="input" value={s.xp_daily} onChange={num('xp_daily')} /></label>
           <label><span className="label">Барлық күнделікті миссия бонусы</span><input type="number" className="input" value={s.xp_missions} onChange={num('xp_missions')} /></label>
         </div>
-        <p className="text-sm text-ink/50">Ойындар үшін XP әр ойынның өз баптауында беріледі («Ойындарды басқару»). Деңгейлер: 0 · 200 · 600 · 1200 · 2200 XP.</p>
+        <p className="text-sm text-ink/50">Ойындар үшін кристалл әр ойынның өз баптауында беріледі («Ойындарды басқару»). Деңгейлер: 0 · 200 · 600 · 1200 · 2200 кристалл.</p>
         <div className="flex justify-end"><button className="btn btn-primary" disabled={busy}>{busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} Сақтау</button></div>
       </form>
 

@@ -1111,6 +1111,9 @@ begin
   update profiles set is_blocked = p_blocked where id = p_uid and role <> 'admin';
 end $$;
 
+-- v2.1: "XP" is called "кристалл" in the UI.
+update public.achievements set title = '500 кристалл', description = '500 кристалл жина', icon = '💎' where code = 'xp_500';
+
 -- Internal helpers must not be callable from the API.
 revoke execute on function public._award(uuid, integer, text, text) from public, anon, authenticated;
 revoke execute on function public._touch(uuid) from public, anon, authenticated;

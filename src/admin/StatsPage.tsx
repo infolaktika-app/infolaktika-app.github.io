@@ -20,7 +20,7 @@ export default function StatsPage() {
         <StatCard icon={<IComic />} label="Комикстер" value={s.comics} tone="#63B1CB" />
         <StatCard icon={<IBook />} label="Кітаптар" value={s.books} tone="#2FA1C8" />
         <StatCard icon={<IGame />} label="Аяқталған ойын" value={s.games_completed} tone="#2683A3" />
-        <StatCard icon={<IZap />} label="Жиналған XP" value={s.xp_total.toLocaleString('ru-RU')} tone="#4E97A9" />
+        <StatCard icon={<IZap />} label="Жиналған кристалл" value={s.xp_total.toLocaleString('ru-RU')} tone="#4E97A9" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -31,7 +31,7 @@ export default function StatsPage() {
         </div>
         <div className="card p-6">
           <h2 className="font-extrabold">Оқу әрекеттері</h2>
-          <p className="mb-4 text-sm text-ink/50">XP әкелген әрекеттер · 14 күнде {totalEvents}</p>
+          <p className="mb-4 text-sm text-ink/50">Кристалл әкелген әрекеттер · 14 күнде {totalEvents}</p>
           <ColumnChart data={s.activity.map((a) => ({ label: a.day.slice(8), value: a.events, tip: formatDate(a.day) }))} unit=" әрекет" />
         </div>
       </div>

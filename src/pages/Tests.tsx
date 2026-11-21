@@ -31,7 +31,7 @@ export default function TestsPage() {
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15"><IClipboard className="h-7 w-7" /></span>
           <div className="min-w-0">
             <h1 className="text-2xl font-extrabold sm:text-3xl">Тесттер</h1>
-            <p className="text-white/75">Кураторыңның тесттері · әр дұрыс жауап = 1 ұпай + 10 XP</p>
+            <p className="text-white/75">Кураторыңның тесттері · әр дұрыс жауап = 1 ұпай + 10 💎</p>
           </div>
         </div>
       </header>

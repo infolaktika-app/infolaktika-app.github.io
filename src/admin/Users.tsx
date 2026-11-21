@@ -110,7 +110,7 @@ export default function UsersPage() {
                     <p className="font-extrabold [overflow-wrap:anywhere]">{u.first_name} {u.last_name}</p>
                     <p className="text-xs font-semibold text-ink/45">@{u.username} · {formatDate(u.created_at)}</p>
                   </div>
-                  {u.role === 'student' && <span className="chip shrink-0 bg-sun/30 text-ink">⭐ {u.xp}</span>}
+                  {u.role === 'student' && <span className="chip shrink-0 bg-sun/30 text-ink">💎 {u.xp}</span>}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                   <Badges u={u} />
@@ -136,7 +136,7 @@ export default function UsersPage() {
             <table className="w-full text-left text-sm">
               <thead className="border-b border-haze text-xs font-bold uppercase tracking-wide text-ink/40">
                 {tab === 'student' ? (
-                  <tr><th className="px-5 py-3">Аты-жөні</th><th className="px-3 py-3">Поток</th><th className="px-3 py-3">Куратор</th><th className="px-3 py-3">XP</th><th className="px-3 py-3">Деңгей</th><th className="px-3 py-3">Соңғы кіру</th><th className="px-5 py-3 text-right">Әрекет</th></tr>
+                  <tr><th className="px-5 py-3">Аты-жөні</th><th className="px-3 py-3">Поток</th><th className="px-3 py-3">Куратор</th><th className="px-3 py-3">💎 Кристалл</th><th className="px-3 py-3">Деңгей</th><th className="px-3 py-3">Соңғы кіру</th><th className="px-5 py-3 text-right">Әрекет</th></tr>
                 ) : (
                   <tr><th className="px-5 py-3">Аты-жөні</th><th className="px-3 py-3">Телефон</th><th className="px-3 py-3">Күйі</th><th className="px-3 py-3">Оқушылар</th><th className="px-3 py-3">Тіркелген</th><th className="px-5 py-3 text-right">Әрекет</th></tr>
                 )}
@@ -152,7 +152,7 @@ export default function UsersPage() {
                       <>
                         <td className="px-3 py-3">{u.stream ? <span className="chip bg-haze text-brand">{u.stream}</span> : <span className="text-ink/35">—</span>}</td>
                         <td className="px-3 py-3 text-ink/70">{u.curator_name ?? <span className="text-ink/35">—</span>}</td>
-                        <td className="px-3 py-3 font-extrabold">⭐ {u.xp}</td>
+                        <td className="px-3 py-3 font-extrabold">💎 {u.xp}</td>
                         <td className="px-3 py-3"><span className="chip bg-haze text-brand">{u.level} · {LEVELS[u.level - 1]?.name}</span></td>
                         <td className="px-3 py-3 text-ink/60">{u.last_active ? formatDate(u.last_active) : '—'}</td>
                       </>

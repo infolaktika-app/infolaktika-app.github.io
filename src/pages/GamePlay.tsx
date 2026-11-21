@@ -98,7 +98,7 @@ export default function GamePlay({ id }: { id: string }) {
               <div className="flex flex-wrap gap-2">
                 <CategoryChip slug={game.category} />
                 <span className={`chip ${DIFFICULTY[game.difficulty]?.cls}`}>{DIFFICULTY[game.difficulty]?.label}</span>
-                <span className="chip bg-sun/35 text-ink">⭐ {game.xp_reward} XP дейін</span>
+                <span className="chip bg-sun/35 text-ink">💎 {game.xp_reward} кристаллға дейін</span>
               </div>
               <h1 className="mt-4 text-3xl font-extrabold tracking-tight">{game.title}</h1>
               <p className="mt-2 text-ink/60">{game.description}</p>
@@ -109,7 +109,7 @@ export default function GamePlay({ id }: { id: string }) {
               {best > 0 && (
                 <p className="mt-4 text-sm font-semibold text-ink/55">
                   Сенің рекордың: <b className="text-brand">{Math.round(best * 100)}%</b>
-                  {best < 1 ? ' · Рекордты жақсартсаң, қосымша XP аласың!' : ' · Мінсіз! Енді тек жаттығу үшін 😊'}
+                  {best < 1 ? ' · Рекордты жақсартсаң, қосымша кристалл аласың!' : ' · Мінсіз! Енді тек жаттығу үшін 😊'}
                 </p>
               )}
               <button className="btn btn-primary mt-6 px-8 py-4 text-base" onClick={begin}><IPlay className="h-5 w-5" /> Ойынды бастау</button>
@@ -157,7 +157,7 @@ function Result({ outcome, onReplay, next, xpMax }: { outcome: { score: number; 
       <div className="mx-auto mt-6 grid max-w-md grid-cols-2 gap-3">
         <div className="rounded-2xl bg-sun/25 p-4">
           <p className="text-2xl font-extrabold">+{outcome.reward?.xp ?? 0}</p>
-          <p className="text-xs font-bold text-ink/55">XP алдың</p>
+          <p className="text-xs font-bold text-ink/55">кристалл алдың</p>
         </div>
         <div className="rounded-2xl bg-haze p-4">
           <p className="text-2xl font-extrabold">{Math.round((outcome.reward?.best ?? outcome.score / outcome.max) * 100)}%</p>
@@ -165,7 +165,7 @@ function Result({ outcome, onReplay, next, xpMax }: { outcome: { score: number; 
         </div>
       </div>
       {outcome.reward && outcome.reward.xp === 0 && (
-        <p className="mx-auto mt-4 max-w-md text-sm text-ink/50">XP тек рекордты жақсартқанда беріледі (ең көбі {xpMax} XP). Алдыңғы нәтижеңнен асып көр!</p>
+        <p className="mx-auto mt-4 max-w-md text-sm text-ink/50">Кристалл тек рекордты жақсартқанда беріледі (ең көбі {xpMax} 💎). Алдыңғы нәтижеңнен асып көр!</p>
       )}
       {!!outcome.reward?.achievements.length && (
         <div className="mt-6 flex flex-wrap justify-center gap-2">

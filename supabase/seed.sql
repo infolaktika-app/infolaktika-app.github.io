@@ -21,7 +21,7 @@ insert into public.achievements (code, title, description, icon, sort) values ('
   on conflict (code) do update set title = excluded.title, description = excluded.description, icon = excluded.icon, sort = excluded.sort;
 insert into public.achievements (code, title, description, icon, sort) values ('daily_5', 'Күнделікті батыр', '5 күнделікті тапсырманы орында', '🎯', 10)
   on conflict (code) do update set title = excluded.title, description = excluded.description, icon = excluded.icon, sort = excluded.sort;
-insert into public.achievements (code, title, description, icon, sort) values ('xp_500', '500 XP', '500 XP жина', '⭐', 11)
+insert into public.achievements (code, title, description, icon, sort) values ('xp_500', '500 кристалл', '500 кристалл жина', '💎', 11)
   on conflict (code) do update set title = excluded.title, description = excluded.description, icon = excluded.icon, sort = excluded.sort;
 insert into public.achievements (code, title, description, icon, sort) values ('level_4', 'IT Master', '4-деңгейге жет', '🤖', 12)
   on conflict (code) do update set title = excluded.title, description = excluded.description, icon = excluded.icon, sort = excluded.sort;

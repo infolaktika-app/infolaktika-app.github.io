@@ -153,7 +153,7 @@ export default function ProfilePage() {
           </div>
           {!curator && (
             <div className="flex flex-wrap gap-2">
-              <span className="chip bg-sun/35 !px-3 !py-2 text-sm text-ink">⭐ {profile.xp} XP</span>
+              <span className="chip bg-sun/35 !px-3 !py-2 text-sm text-ink">💎 {profile.xp}</span>
               <span className="chip bg-haze !px-3 !py-2 text-sm text-brand">🔥 {profile.streak} күн</span>
               {stats && <span className="chip bg-haze !px-3 !py-2 text-sm text-brand">#{stats.rank}</span>}
             </div>

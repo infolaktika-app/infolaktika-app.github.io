@@ -33,7 +33,7 @@ export default function Achievements() {
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon="⭐" label="Жалпы XP" value={profile.xp} tone="#4E97A9" />
+        <StatCard icon="💎" label="Жалпы кристалл" value={profile.xp} tone="#4E97A9" />
         <StatCard icon={<IFlame />} label="Күнделікті серия" value={`${stats.streak} күн`} sub={`Ең ұзақ: ${stats.best_streak} күн`} tone="#4CA5C3" />
         <StatCard icon="🎮" label="Аяқталған ойын" value={stats.games_completed} sub={`${stats.games_total} ойынның ішінен`} tone="#2A6B7F" />
         <StatCard icon="📖" label="Оқылған материал" value={stats.comics_read + stats.books_read} sub={`${stats.comics_read} комикс · ${stats.books_read} кітап`} tone="#2FA1C8" />
@@ -53,7 +53,7 @@ export default function Achievements() {
                     {l.level}
                   </div>
                   <p className={`mt-3 text-sm font-extrabold ${reached ? '' : 'text-ink/40'}`}>{l.name}</p>
-                  <p className="text-xs text-ink/45">{l.kk} · {l.min} XP</p>
+                  <p className="text-xs text-ink/45">{l.kk} · {l.min} 💎</p>
                 </div>
               );
             })}
@@ -82,9 +82,9 @@ export default function Achievements() {
       </section>
 
       <section>
-        <SectionHead title="XP тарихы" />
+        <SectionHead title="Кристалл тарихы" />
         <div className="card divide-y divide-haze">
-          {history.length === 0 && <p className="p-8 text-center text-ink/45">Әзірге XP жоқ. Бірінші ойынды ойна! 🎮</p>}
+          {history.length === 0 && <p className="p-8 text-center text-ink/45">Әзірге кристалл жоқ. Бірінші ойынды ойна! 🎮</p>}
           {history.map((h, i) => (
             <div key={i} className="flex items-center gap-4 px-5 py-3.5">
               <span className="text-sm font-bold">{REASON[h.reason] ?? h.reason}</span>

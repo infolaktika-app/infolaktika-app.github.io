@@ -69,7 +69,7 @@ export default function Library({ kind }: { kind: 'comic' | 'book' }) {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{isComic ? 'Комикстер' : 'Кітапхана'}</h1>
             <p className="mt-2 max-w-lg text-ink/55">
-              {isComic ? 'Суретті оқиғалар арқылы информатиканың қызық әлемін аш. Әр оқылған комикс үшін XP аласың!' : 'Оқулықтар мен анықтамалықтар — тікелей сайтта оқы, прогресің сақталады.'}
+              {isComic ? 'Суретті оқиғалар арқылы информатиканың қызық әлемін аш. Әр оқылған комикс үшін кристалл аласың!' : 'Оқулықтар мен анықтамалықтар — тікелей сайтта оқы, прогресің сақталады.'}
             </p>
             {data && <p className="mt-3 text-sm font-bold text-brand">{data.items.length} {isComic ? 'комикс' : 'кітап'} · {[...prog.values()].filter((p) => p.completed).length} оқылды</p>}
           </div>

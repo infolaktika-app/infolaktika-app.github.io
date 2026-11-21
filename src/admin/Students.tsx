@@ -48,7 +48,7 @@ export function StudentsPage() {
         </label>
         <select className="input sm:w-60" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
           <option value="created_at">Жаңа тіркелгендер</option>
-          <option value="xp">XP бойынша</option>
+          <option value="xp">Кристалл бойынша</option>
           <option value="games_completed">Ойындар бойынша</option>
           <option value="name">Тегі бойынша (А–Я)</option>
         </select>
@@ -59,7 +59,7 @@ export function StudentsPage() {
             <thead className="border-b border-haze text-xs font-bold uppercase tracking-wide text-ink/40">
               <tr>
                 <th className="px-5 py-3">Аты-жөні</th><th className="px-3 py-3">Логин</th><th className="px-3 py-3">Тіркелген</th>
-                <th className="px-3 py-3">XP</th><th className="px-3 py-3">Деңгей</th><th className="px-3 py-3">Ойындар</th>
+                <th className="px-3 py-3">💎 Кристалл</th><th className="px-3 py-3">Деңгей</th><th className="px-3 py-3">Ойындар</th>
                 <th className="px-3 py-3">Оқу белсенділігі</th><th className="px-3 py-3">Соңғы кіру</th><th className="px-5 py-3 text-right">Әрекет</th>
               </tr>
             </thead>
@@ -72,7 +72,7 @@ export function StudentsPage() {
                   </td>
                   <td className="px-3 py-3 text-ink/60">@{s.username}</td>
                   <td className="px-3 py-3 text-ink/60">{formatDate(s.created_at)}</td>
-                  <td className="px-3 py-3 font-extrabold">⭐ {s.xp}</td>
+                  <td className="px-3 py-3 font-extrabold">💎 {s.xp}</td>
                   <td className="px-3 py-3"><span className="chip bg-haze text-brand">{s.level} · {LEVELS[s.level - 1]?.name}</span></td>
                   <td className="px-3 py-3 font-bold">{s.games_completed}</td>
                   <td className="px-3 py-3 text-ink/70">🦸 {s.comics_read} · 📚 {s.books_read} · {s.pages_read} бет</td>
@@ -107,7 +107,7 @@ export function StudentDetailPage({ id }: { id: string }) {
   const adjust = async () => {
     const n = parseInt(xp, 10);
     if (!n) return;
-    try { await api.adminAdjustXp(id, n); toast.success(`XP ${n > 0 ? '+' : ''}${n}`); setXp(''); reload(); } catch (e) { toast.error(friendlyError(e)); }
+    try { await api.adminAdjustXp(id, n); toast.success(`💎 ${n > 0 ? '+' : ''}${n} кристалл`); setXp(''); reload(); } catch (e) { toast.error(friendlyError(e)); }
   };
 
   return (
@@ -121,12 +121,12 @@ export function StudentDetailPage({ id }: { id: string }) {
           <div className="mt-3 max-w-md"><LevelBar xp={p.xp} compact /></div>
         </div>
         <div className="flex items-center gap-2">
-          <input className="input !w-28 !py-2" placeholder="± XP" value={xp} onChange={(e) => setXp(e.target.value.replace(/[^\d-]/g, ''))} />
-          <button className="btn btn-soft btn-sm" onClick={adjust}>XP түзету</button>
+          <input className="input !w-28 !py-2" placeholder="± 💎" value={xp} onChange={(e) => setXp(e.target.value.replace(/[^\d-]/g, ''))} />
+          <button className="btn btn-soft btn-sm" onClick={adjust}>Кристалл түзету</button>
         </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon="⭐" label="XP" value={p.xp} tone="#4E97A9" />
+        <StatCard icon="💎" label="Кристалл" value={p.xp} tone="#4E97A9" />
         <StatCard icon="🔥" label="Серия" value={`${p.streak} күн`} sub={`Ең ұзақ: ${p.best_streak}`} tone="#4CA5C3" />
         <StatCard icon="🎮" label="Ойын нәтижелері" value={d.results.length} tone="#2A6B7F" />
         <StatCard icon="🏅" label="Жетістіктер" value={d.achievements.length} tone="#2683A3" />

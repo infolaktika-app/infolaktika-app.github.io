@@ -68,7 +68,7 @@ export default function GamesManager() {
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-haze text-2xl">{t.icon}</span>
                 <div className="min-w-0 flex-1">
                   <p className="line-clamp-2 font-extrabold leading-snug">{g.title}</p>
-                  <p className="text-xs font-semibold text-ink/45">{t.label} · {DIFFICULTY[g.difficulty]?.label} · ⭐ {g.xp_reward} XP</p>
+                  <p className="text-xs font-semibold text-ink/45">{t.label} · {DIFFICULTY[g.difficulty]?.label} · 💎 {g.xp_reward}</p>
                 </div>
               </div>
               <div className="mt-3"><CategoryChip slug={g.category} small /></div>
@@ -85,7 +85,7 @@ export default function GamesManager() {
         })}
       </div>
       {edit && <GameForm game={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
-      <Confirm open={!!del} onClose={() => setDel(null)} title={`«${del?.title}» жойылсын ба?`} text="Ойынның барлық нәтижелері де жойылады. Оқушылардың XP-сы сақталады."
+      <Confirm open={!!del} onClose={() => setDel(null)} title={`«${del?.title}» жойылсын ба?`} text="Ойынның барлық нәтижелері де жойылады. Оқушылардың кристалдары сақталады."
         onConfirm={async () => { try { await api.deleteGame(del!.id); toast.success('Ойын жойылды'); setDel(null); reload(); } catch (e) { toast.error(friendlyError(e)); } }} />
     </div>
   );
@@ -143,7 +143,7 @@ function GameForm({ game, onClose, onSaved }: { game: Partial<Game>; onClose: ()
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="block"><span className="label">XP (макс.)</span><input type="number" min={0} max={1000} className="input" value={g.xp_reward ?? 0} onChange={(e) => setG({ ...g, xp_reward: Number(e.target.value) })} /></label>
+            <label className="block"><span className="label">Кристалл (макс.)</span><input type="number" min={0} max={1000} className="input" value={g.xp_reward ?? 0} onChange={(e) => setG({ ...g, xp_reward: Number(e.target.value) })} /></label>
             <label className="block"><span className="label">Реті</span><input type="number" className="input" value={g.sort ?? 100} onChange={(e) => setG({ ...g, sort: Number(e.target.value) })} /></label>
           </div>
         </div>

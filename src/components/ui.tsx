@@ -52,7 +52,7 @@ export function LevelBar({ xp, compact = false }: { xp: number; compact?: boolea
     <div>
       <div className={`flex items-center justify-between ${compact ? 'text-xs' : 'text-sm'} font-semibold`}>
         <span className="text-brand">{p.cur.level}-деңгей · {p.cur.name}</span>
-        <span className="text-ink/45">{p.next ? `${p.toNext} XP қалды` : 'Максимум!'}</span>
+        <span className="text-ink/45">{p.next ? `${p.toNext} кристалл қалды` : 'Максимум!'}</span>
       </div>
       <ProgressBar value={p.pct} className={compact ? 'mt-1.5 h-2' : 'mt-2'} />
     </div>

@@ -42,11 +42,11 @@ export default function Games() {
         <div className="relative flex items-center justify-between gap-6">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Ойындар</h1>
-            <p className="mt-2 max-w-lg text-white/70">Информатика тақырыптарын ойын арқылы меңгер. Әр жаңа рекорд үшін XP аласың!</p>
+            <p className="mt-2 max-w-lg text-white/70">Информатика тақырыптарын ойын арқылы меңгер. Әр жаңа рекорд үшін кристалл аласың!</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="chip bg-white/10 text-white">🎮 {data?.games.length ?? 0} ойын</span>
               <span className="chip bg-white/10 text-white">✅ {played} ойнадың</span>
-              <span className="chip bg-sun text-ink">⭐ {data?.games.reduce((s, g) => s + g.xp_reward, 0) ?? 0} XP жинауға болады</span>
+              <span className="chip bg-sun text-ink">💎 {data?.games.reduce((s, g) => s + g.xp_reward, 0) ?? 0} кристалл жинауға болады</span>
             </div>
           </div>
           <div className="relative hidden h-36 w-56 shrink-0 sm:block">
