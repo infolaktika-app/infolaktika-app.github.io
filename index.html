@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="kk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#17404E" />
+    <script>
+      // Apply the saved (or system) theme before first paint to avoid a flash.
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem('infolaktika-theme'); } catch (e) {}
+        if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+        if (t === 'dark') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#07171C');
+      })();
+    </script>
+    <title>INFOLAKTIKA — Информатиканы ойнап үйрен</title>
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/juz40-regular.woff" as="font" type="font/woff" crossorigin />
+    <link rel="preload" href="/fonts/juz40-bold.woff" as="font" type="font/woff" crossorigin />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
