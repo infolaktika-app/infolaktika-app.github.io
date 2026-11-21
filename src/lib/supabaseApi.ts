@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import type { Api } from './api';
 import { staticUrl } from './api';
 import type { Achievement, Book, Comic, ContentInput, Game, Material, Profile, Test } from './types';
-import { oneTimeCredentials } from './constants';
 
 export function createSupabaseApi(url: string, anonKey: string, emailDomain: string): Api {
   const sb = createClient(url, anonKey, {
@@ -101,9 +100,7 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     async signUp(i) {
       const username = i.username.trim().toLowerCase();
       if (!(await api.usernameAvailable(username))) throw new Error('already exists');
-      const meta: Record<string, string> = { first_name: i.first_name.trim(), last_name: i.last_name.trim(), username, role: i.role };
-      if (i.role === 'student' && i.stream) meta.stream = i.stream.trim();
-      if (i.role === 'curator' && i.phone) meta.phone = i.phone;
+      const meta = { first_name: i.first_name.trim(), last_name: i.last_name.trim(), username, stream: i.stream.trim() };
       const { data, error } = await sb.auth.signUp({ email: emailFor(username), password: i.password, options: { data: meta } });
       if (error) throw error;
       if (!data.session) {
@@ -137,25 +134,14 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
       if (stale.length) await sb.storage.from('avatars').remove(stale);
       return sb.storage.from('avatars').getPublicUrl(path).data.publicUrl;
     },
-    async finishSetup(username, password) {
-      const u = username.trim().toLowerCase();
-      if (!(await api.usernameAvailable(u))) {
-        const me = await api.currentProfile();
-        if (me?.username !== u) throw new Error('already exists');
-      }
-      const { error } = await sb.auth.updateUser({ password });
-      if (error) throw error;
-      await rpc('finish_setup', { p_username: u });
-    },
     async ping() {
       await rpc('ping');
     },
-    listCurators: () => rpc('list_curators'),
 
     myTests: () => rpc('my_tests'),
     getTest: (id) => rpc('get_test', { p_id: id }),
     submitTest: (id, answers) => rpc('submit_test', { p_id: id, p_answers: answers }),
-    groupRating: () => rpc('group_rating'),
+    testRating: () => rpc('test_rating'),
 
     async listMaterials() {
       const rows = check(await sb.from('materials').select('*').order('created_at', { ascending: false })) as Material[];
@@ -185,42 +171,18 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
       await sb.storage.from('materials').remove([m.file_path]);
     },
 
-    curatorOverview: () => rpc('curator_overview'),
-    curatorStudents: () => rpc('curator_students'),
-    async curatorCreateStudent(i) {
-      const me = await uid();
-      // A throw-away client so the curator's own session is not replaced by the new student's.
-      const tmp = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'infolaktika-tmp' } });
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const cred = oneTimeCredentials();
-        if (!(await api.usernameAvailable(cred.username))) continue;
-        const { error } = await tmp.auth.signUp({
-          email: emailFor(cred.username),
-          password: cred.password,
-          options: { data: {
-            first_name: i.first_name.trim(), last_name: i.last_name.trim(), username: cred.username, role: 'student',
-            stream: i.stream.trim(), curator_id: me, created_by: me, must_change: true,
-          } },
-        });
-        if (error) throw error;
-        await tmp.auth.signOut().catch(() => {});
-        return cred;
-      }
-      throw new Error('Логин жасау мүмкін болмады, қайталап көріңіз.');
-    },
-    curatorRemoveStudent: (id) => rpc('curator_remove_student', { p_uid: id }),
-    async curatorTests() {
-      return check(await sb.from('tests').select('*').eq('curator_id', await uid()).order('created_at', { ascending: false })) as Test[];
+    async adminTests() {
+      return check(await sb.from('tests').select('*').order('created_at', { ascending: false })) as Test[];
     },
     async saveTest(t) {
       const row = { title: t.title.trim(), description: t.description.trim(), questions: t.questions, published: t.published };
       if (t.id) check(await sb.from('tests').update(row).eq('id', t.id));
-      else check(await sb.from('tests').insert({ ...row, curator_id: await uid() }));
+      else check(await sb.from('tests').insert({ ...row, author_id: await uid() }));
     },
     async deleteTest(id) {
       check(await sb.from('tests').delete().eq('id', id));
     },
-    testResults: (id) => rpc('curator_test_results', { p_test: id }),
+    testResults: (id) => rpc('admin_test_results', { p_test: id }),
 
     async listComics() {
       return check(await sb.from('comics').select('*').order('created_at', { ascending: false })) as Comic[];
@@ -327,7 +289,6 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     adminDeleteStudent: (id) => rpc('admin_delete_student', { p_uid: id }),
     adminStats: () => rpc('admin_stats'),
     adminUsers: () => rpc('admin_users'),
-    adminSetCuratorStatus: (id, status) => rpc('admin_set_curator_status', { p_uid: id, p_status: status }),
     async saveSettings(s) {
       check(await sb.from('settings').update({ ...s, updated_at: new Date().toISOString() }).eq('id', 1));
     },

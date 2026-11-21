@@ -1,9 +1,8 @@
 import type {
   Achievement, AdminStats, Book, Comic, ContentInput, DailyChallenge, Game, GameResult, ItemType,
   LeaderRow, MyStats, Notification, Profile, ReadingProgress, RewardResult, Settings, SignUpInput,
-  StudentDetail, StudentRow, ProfilePatch, CuratorBrief, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
-  CuratorStudentRow, NewStudentInput, NewStudentCredentials, Test, TestResultRow, CuratorOverview, Material,
-  MaterialInput, AdminUserRow,
+  StudentDetail, StudentRow, ProfilePatch, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
+  Test, TestResultRow, Material, MaterialInput, AdminUserRow,
 } from './types';
 
 export interface DailyResult extends RewardResult {
@@ -28,28 +27,21 @@ export interface Api {
   updateProfile(patch: ProfilePatch): Promise<void>;
   /** Upload a (already downscaled) photo and return the value to store in profile.avatar. */
   uploadAvatar(photo: Blob): Promise<string>;
-  /** Change login + password (used after one-time credentials from a curator). */
-  finishSetup(username: string, password: string): Promise<void>;
   ping(): Promise<void>;
-  listCurators(): Promise<CuratorBrief[]>;
 
-  // tests (students)
+  // surveys / tests (students)
   myTests(): Promise<MyTestRow[]>;
   getTest(id: string): Promise<TestForStudent>;
   submitTest(id: string, answers: (number | null)[]): Promise<TestSubmitResult>;
-  groupRating(): Promise<GroupRatingRow[]>;
+  testRating(): Promise<GroupRatingRow[]>;
 
-  // materials (everyone reads; curators/admin upload)
+  // materials (everyone reads; admin uploads)
   listMaterials(): Promise<Material[]>;
   saveMaterial(input: MaterialInput): Promise<void>;
   deleteMaterial(m: Material): Promise<void>;
 
-  // curators
-  curatorOverview(): Promise<CuratorOverview>;
-  curatorStudents(): Promise<CuratorStudentRow[]>;
-  curatorCreateStudent(input: NewStudentInput): Promise<NewStudentCredentials>;
-  curatorRemoveStudent(id: string): Promise<'deleted' | 'removed'>;
-  curatorTests(): Promise<Test[]>;
+  // surveys / tests (admin)
+  adminTests(): Promise<Test[]>;
   saveTest(t: Partial<Test> & Pick<Test, 'title' | 'description' | 'questions' | 'published'>): Promise<void>;
   deleteTest(id: string): Promise<void>;
   testResults(id: string): Promise<TestResultRow[]>;
@@ -91,7 +83,6 @@ export interface Api {
   adminDeleteStudent(id: string): Promise<void>;
   adminStats(): Promise<AdminStats>;
   adminUsers(): Promise<AdminUserRow[]>;
-  adminSetCuratorStatus(id: string, status: 'pending' | 'approved'): Promise<void>;
   saveSettings(s: Settings): Promise<void>;
 }
 
@@ -114,12 +105,9 @@ export function friendlyError(e: unknown): string {
   const msg = (e as any)?.message ?? String(e);
   if (/invalid login|invalid credentials|Неверн/i.test(msg)) return 'Логин немесе құпиясөз қате.';
   if (/already registered|already exists|duplicate key.*username/i.test(msg)) return 'Бұл логин бос емес. Басқасын таңда.';
-  if (/test already answered/i.test(msg)) return 'Бұл тест бұрын тапсырылған.';
-  if (/test not found/i.test(msg)) return 'Тест табылмады немесе сізге ашық емес.';
-  if (/curator not found/i.test(msg)) return 'Куратор табылмады.';
-  if (/phone required/i.test(msg)) return 'Куратор үшін телефон нөмірі міндетті.';
+  if (/test already answered/i.test(msg)) return 'Бұл сауалнама бұрын тапсырылған.';
+  if (/test not found/i.test(msg)) return 'Сауалнама табылмады.';
   if (/invalid question|questions/i.test(msg)) return 'Әр сұрақта мәтін, 4 жауап нұсқасы және бір дұрыс жауап болуы керек.';
-  if (/invalid username/i.test(msg)) return 'Логин 3–24 таңба: латын әріптері, сандар, «_» немесе «.».';
   if (/rate limit|too many/i.test(msg)) return 'Тым көп әрекет. Бірнеше минуттан кейін қайталаңыз.';
   if (/exceeded the maximum allowed size|Payload too large|too large/i.test(msg)) return 'Файл тым үлкен (ең көбі 20 МБ).';
   if (/mime type|not supported/i.test(msg)) return 'Бұл файл түріне рұқсат жоқ.';

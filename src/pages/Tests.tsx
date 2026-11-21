@@ -16,7 +16,7 @@ export default function TestsPage() {
   const { api, profile } = useSession();
   const [tab, setTab] = useState<'tests' | 'rating'>('tests');
   const tests = useAsync(() => api.myTests(), []);
-  const rating = useAsync(() => api.groupRating(), []);
+  const rating = useAsync(() => api.testRating(), []);
 
   if (tests.loading) return <PageLoader />;
   const list = tests.data ?? [];
@@ -30,24 +30,17 @@ export default function TestsPage() {
         <div className="relative flex items-center gap-4">
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15"><IClipboard className="h-7 w-7" /></span>
           <div className="min-w-0">
-            <h1 className="text-2xl font-extrabold sm:text-3xl">Тесттер</h1>
-            <p className="text-white/75">Кураторыңның тесттері · әр дұрыс жауап = 1 ұпай + 10 💎</p>
+            <h1 className="text-2xl font-extrabold sm:text-3xl">Сауалнамалар</h1>
+            <p className="text-white/75">Әр дұрыс жауап = 1 ұпай + 10 💎 · әр сауалнама бір рет тапсырылады</p>
           </div>
         </div>
       </header>
 
-      {!profile.curator_id && (
-        <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="font-semibold text-ink/70">Тесттер ашылуы үшін профильде кураторыңды таңда.</p>
-          <Link to="/app/profile" className="btn btn-primary btn-sm">Куратор таңдау <IArrowR className="h-4 w-4" /></Link>
-        </div>
-      )}
-
-      <Tabs value={tab} onChange={setTab} items={[{ value: 'tests', label: `Тесттер (${list.length})` }, { value: 'rating', label: 'Топ рейтингі' }]} />
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'tests', label: `Сауалнамалар (${list.length})` }, { value: 'rating', label: 'Ұпай рейтингі' }]} />
 
       {tab === 'tests' ? (
         list.length === 0 ? (
-          <Empty title="Әзірге тест жоқ" text={profile.curator_id ? 'Куратор жаңа тест қосқанда, хабарлама келеді.' : undefined} />
+          <Empty title="Әзірге сауалнама жоқ" text="Жаңа сауалнама қосылғанда, хабарлама келеді." />
         ) : (
           <div className="space-y-6">
             {todo.length > 0 && (
@@ -60,7 +53,7 @@ export default function TestsPage() {
                       <h3 className="mt-3 text-lg font-extrabold leading-snug">{t.title}</h3>
                       {t.description && <p className="mt-1 line-clamp-2 text-sm text-ink/55">{t.description}</p>}
                       <div className="mt-auto flex items-center justify-between pt-4 text-xs font-semibold text-ink/45">
-                        <span className="truncate">{t.curator_name} · {formatDate(t.created_at)}</span>
+                        <span className="truncate">{formatDate(t.created_at)}</span>
                         <span className="btn btn-primary btn-sm shrink-0">Бастау</span>
                       </div>
                     </Link>
@@ -77,7 +70,7 @@ export default function TestsPage() {
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-haze text-emerald-600"><ICheck className="h-5 w-5" /></span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-extrabold">{t.title}</p>
-                        <p className="truncate text-xs text-ink/45">{t.curator_name} · {formatDate(t.done_at)}</p>
+                        <p className="truncate text-xs text-ink/45">Тапсырылды: {formatDate(t.done_at)}</p>
                       </div>
                       <span className="chip shrink-0 bg-sun/30 text-ink">{t.score}/{t.max_score}</span>
                     </Link>
@@ -88,7 +81,7 @@ export default function TestsPage() {
           </div>
         )
       ) : rating.loading ? <PageLoader /> : (
-        <GroupRating rows={rating.data ?? []} meId={profile.id} emptyText={profile.curator_id ? undefined : 'Алдымен кураторыңды таңда.'} />
+        <GroupRating rows={rating.data ?? []} meId={profile.id} />
       )}
     </div>
   );
@@ -134,9 +127,9 @@ export function TestTake({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
 
   if (loading) return <PageLoader />;
-  if (error || !t) return <Empty title="Тест табылмады" text={friendlyError(error)} action={<Link to="/app/tests" className="btn btn-primary">Тесттерге</Link>} />;
+  if (error || !t) return <Empty title="Сауалнама табылмады" text={friendlyError(error)} action={<Link to="/app/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
 
-  const back = <button className="btn btn-ghost btn-sm" onClick={() => navigate('/app/tests')}><IChevL className="h-4 w-4" /> Тесттер</button>;
+  const back = <button className="btn btn-ghost btn-sm" onClick={() => navigate('/app/tests')}><IChevL className="h-4 w-4" /> Сауалнамалар</button>;
 
   if (t.attempt) {
     const a = t.attempt;
@@ -149,7 +142,7 @@ export function TestTake({ id }: { id: string }) {
           <h1 className="mt-3 text-2xl font-extrabold">{t.title}</h1>
           <p className="mt-1 text-ink/55">Нәтиже: <b className="text-ink">{a.score} / {a.max_score}</b> · {p}%</p>
           <ProgressBar value={p} className="mx-auto mt-4 max-w-sm" tone="sun" />
-          <p className="mt-3 text-xs text-ink/45">Тест бір рет қана тапсырылады. Төменде қателеріңді қарап шық.</p>
+          <p className="mt-3 text-xs text-ink/45">Сауалнама бір рет қана тапсырылады. Төменде қателеріңді қарап шық.</p>
         </div>
         <Review questions={t.questions} attempt={a} />
       </div>
@@ -180,8 +173,8 @@ export function TestTake({ id }: { id: string }) {
     <div className="mx-auto max-w-3xl space-y-5">
       {back}
       <div>
-        <p className="text-sm font-semibold text-ink/45">{t.curator_name}</p>
         <h1 className="text-2xl font-extrabold leading-tight">{t.title}</h1>
+        {t.description && <p className="mt-1 text-sm text-ink/55">{t.description}</p>}
       </div>
       <div className="flex items-center gap-3">
         <ProgressBar value={((i + 1) / total) * 100} className="flex-1" />

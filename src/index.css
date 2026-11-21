@@ -178,22 +178,6 @@
     box-shadow: 0 4px 0 var(--edge), 0 10px 20px -12px rgba(var(--shade), .35);
   }
 
-  .role-card {
-    @apply rounded-2xl bg-card px-4 py-3.5 text-left ring-2 ring-transparent transition;
-    box-shadow: 0 4px 0 var(--edge);
-  }
-  .role-card { position: relative; opacity: .8; }
-  .role-card:hover { opacity: 1; }
-  .role-card.active {
-    opacity: 1;
-    background: var(--haze);
-    box-shadow: 0 0 0 2.5px #17404E, 0 4px 0 #17404E;
-  }
-  .dark .role-card.active, [data-theme=dark] .role-card.active { box-shadow: 0 0 0 2.5px #8CC071, 0 4px 0 #5E9A45; }
-  .role-card.active::after {
-    content: "✓"; position: absolute; top: 10px; right: 12px; display: grid; place-items: center;
-    width: 22px; height: 22px; border-radius: 999px; background: #8CC071; color: #0F2A33; font-size: 13px; font-weight: 800;
-  }
 
   /* mobile bottom tab bar */
   .tab-item {

@@ -97,36 +97,6 @@ export function todayKZ() {
 
 export const STREAM_RE = /^[0-9A-Za-z-]{1,8}$/;
 
-/** "+7 701 234 56 78", "8 (701) 234-56-78" → "+77012345678". Returns null when it can't be a phone number. */
-export function normalizePhone(raw: string): string | null {
-  let d = raw.replace(/[^\d+]/g, '');
-  if (/^8\d{10}$/.test(d)) d = '+7' + d.slice(1);
-  else if (/^7\d{10}$/.test(d)) d = '+' + d;
-  else if (/^\d{10}$/.test(d)) d = '+7' + d;
-  return /^\+\d{10,15}$/.test(d) ? d : null;
-}
-
-export function formatPhone(p: string | null | undefined) {
-  if (!p) return '—';
-  const m = /^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/.exec(p);
-  return m ? `+7 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : p;
-}
-
-function rand(n: number) {
-  const a = new Uint32Array(1);
-  crypto.getRandomValues(a);
-  return a[0] % n;
-}
-
-/** One-time credentials a curator hands to a new student. */
-export function oneTimeCredentials() {
-  const username = 'st' + String(100000 + rand(900000));
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let password = '';
-  for (let i = 0; i < 8; i++) password += chars[rand(chars.length)];
-  return { username, password };
-}
-
 export function fileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;

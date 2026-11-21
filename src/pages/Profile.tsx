@@ -3,7 +3,7 @@ import { Avatar, isPhotoAvatar, LevelBar, Spinner } from '../components/ui';
 import { ICamera, ITrash } from '../components/Icons';
 import { friendlyError } from '../lib/api';
 import { useAuth, useSession } from '../lib/auth';
-import { AVATARS, formatDate, formatPhone, normalizePhone, STREAM_RE } from '../lib/constants';
+import { AVATARS, formatDate, STREAM_RE } from '../lib/constants';
 import { navigate } from '../lib/router';
 import { useToast } from '../lib/toast';
 import { useAsync } from '../lib/useAsync';
@@ -23,35 +23,24 @@ export default function ProfilePage() {
   const { api, profile, refresh } = useSession();
   const { signOut } = useAuth();
   const toast = useToast();
-  const curator = profile.role === 'curator';
   const [first, setFirst] = useState(profile.first_name);
   const [last, setLast] = useState(profile.last_name);
   const [stream, setStream] = useState(profile.stream ?? '');
-  const [phone, setPhone] = useState(profile.phone ? formatPhone(profile.phone) : '');
   const [avatar, setAvatar] = useState(profile.avatar);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [pw, setPw] = useState({ a: '', b: '' });
   const [pwBusy, setPwBusy] = useState(false);
-  const [curatorId, setCuratorId] = useState(profile.curator_id ?? '');
-  const [curBusy, setCurBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { data: stats } = useAsync(() => (curator ? Promise.resolve(null) : api.myStats()), []);
-  const { data: curators } = useAsync(() => (curator ? Promise.resolve([]) : api.listCurators()), []);
-  const myCurator = curators?.find((c) => c.id === profile.curator_id);
+  const { data: stats } = useAsync(() => api.myStats(), []);
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!first.trim() || !last.trim()) return toast.error('Аты мен тегін толтыр');
-    if (!curator && !STREAM_RE.test(stream)) return toast.error('Поток нөмірін жаз (мысалы: 01, 11, 21)');
-    const ph = normalizePhone(phone);
-    if (curator && !ph) return toast.error('Телефон нөмірін дұрыс жазыңыз');
+    if (profile.role === 'student' && !STREAM_RE.test(stream)) return toast.error('Поток нөмірін жаз (мысалы: 01, 11, 21)');
     setBusy(true);
     try {
-      await api.updateProfile({
-        first_name: first.trim(), last_name: last.trim(), avatar,
-        ...(curator ? { phone: ph! } : { stream: stream.trim() }),
-      });
+      await api.updateProfile({ first_name: first.trim(), last_name: last.trim(), avatar, ...(stream.trim() ? { stream: stream.trim() } : {}) });
       await refresh();
       toast.success('Профиль сақталды');
     } catch (e) {
@@ -91,19 +80,6 @@ export default function ProfilePage() {
       toast.error(friendlyError(e));
     } finally {
       setPhotoBusy(false);
-    }
-  };
-
-  const saveCurator = async () => {
-    setCurBusy(true);
-    try {
-      await api.updateProfile({ curator_id: curatorId || null });
-      await refresh();
-      toast.success(curatorId ? 'Куратор таңдалды' : 'Куратор алынып тасталды');
-    } catch (e) {
-      toast.error(friendlyError(e));
-    } finally {
-      setCurBusy(false);
     }
   };
 
@@ -148,10 +124,10 @@ export default function ProfilePage() {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-extrabold">{profile.first_name} {profile.last_name}</h1>
             <p className="text-sm font-semibold text-ink/50">
-              @{profile.username} · {curator ? 'Куратор' : `${profile.stream ? `${profile.stream} поток · ` : ''}Тіркелген: ${formatDate(profile.created_at)}`}
+              @{profile.username} · {profile.stream ? `${profile.stream} поток · ` : ''}Тіркелген: {formatDate(profile.created_at)}
             </p>
           </div>
-          {!curator && (
+          {(
             <div className="flex flex-wrap gap-2">
               <span className="chip bg-sun/35 !px-3 !py-2 text-sm text-ink">💎 {profile.xp}</span>
               <span className="chip bg-haze !px-3 !py-2 text-sm text-brand">🔥 {profile.streak} күн</span>
@@ -159,47 +135,15 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
-        {!curator && <div className="relative mt-6"><LevelBar xp={profile.xp} /></div>}
+        <div className="relative mt-6"><LevelBar xp={profile.xp} /></div>
       </div>
-
-      {!curator && (
-        <div className="card space-y-4 p-5 sm:p-8">
-          <div>
-            <h2 className="text-lg font-extrabold">Менің кураторым</h2>
-            <p className="text-sm text-ink/50">Кураторыңды таңда — оның тесттері мен рейтингі саған ашылады.</p>
-          </div>
-          {myCurator && (
-            <div className="flex items-center gap-3 rounded-2xl bg-haze/60 p-3">
-              <Avatar id={myCurator.avatar} size={44} />
-              <div className="min-w-0">
-                <p className="truncate font-extrabold">{myCurator.first_name} {myCurator.last_name}</p>
-                <p className="text-xs text-ink/50">{myCurator.students} оқушы</p>
-              </div>
-            </div>
-          )}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <select className="input flex-1" value={curatorId} onChange={(e) => setCuratorId(e.target.value)} aria-label="Куратор">
-              <option value="">— Куратор таңдалмаған —</option>
-              {(curators ?? []).map((c) => <option key={c.id} value={c.id}>{c.first_name} {c.last_name} ({c.students} оқушы)</option>)}
-            </select>
-            <button className="btn btn-primary" onClick={saveCurator} disabled={curBusy || curatorId === (profile.curator_id ?? '')}>
-              {curBusy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} Сақтау
-            </button>
-          </div>
-          {curators && curators.length === 0 && <p className="text-sm text-ink/45">Әзірге расталған куратор жоқ.</p>}
-        </div>
-      )}
 
       <form onSubmit={save} className="card space-y-5 p-5 sm:p-8">
         <h2 className="text-lg font-extrabold">Жеке мәліметтер</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">Аты</span><input className="input" value={first} onChange={(e) => setFirst(e.target.value)} /></label>
           <label><span className="label">Тегі</span><input className="input" value={last} onChange={(e) => setLast(e.target.value)} /></label>
-          {curator ? (
-            <label><span className="label">Телефон нөмірі</span><input className="input" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 701 234 56 78" /></label>
-          ) : (
-            <label><span className="label">Поток</span><input className="input" inputMode="numeric" value={stream} onChange={(e) => setStream(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 8))} placeholder="мысалы: 11" /></label>
-          )}
+          <label><span className="label">Поток</span><input className="input" inputMode="numeric" value={stream} onChange={(e) => setStream(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 8))} placeholder="мысалы: 11" /></label>
         </div>
         <div>
           <span className="label">Аватар</span>

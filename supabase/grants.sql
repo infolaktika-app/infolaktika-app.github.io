@@ -12,11 +12,12 @@ grant select on all tables in schema public to authenticated;
 -- Әкімші контенті (RLS тек is_admin() үшін рұқсат береді).
 grant insert, update, delete on public.comics, public.books, public.games, public.daily_challenges, public.tests to authenticated;
 grant insert, delete on public.materials to authenticated;
+revoke update on public.materials from authenticated;
 grant update on public.settings to authenticated;
 
 -- Профиль мен хабарландыруда тек белгілі бағандар өзгертіледі.
 revoke update on public.profiles from authenticated, anon;
-grant update (first_name, last_name, avatar, stream, phone, curator_id) on public.profiles to authenticated;
+grant update (first_name, last_name, avatar, stream) on public.profiles to authenticated;
 revoke update on public.notifications from authenticated;
 grant update (read) on public.notifications to authenticated;
 
@@ -39,18 +40,11 @@ grant execute on function public.admin_set_blocked to authenticated;
 grant execute on function public.admin_adjust_xp to authenticated;
 grant execute on function public.admin_delete_student to authenticated;
 grant execute on function public.admin_stats to authenticated;
-grant execute on function public.is_curator() to authenticated;
-grant execute on function public.list_curators() to authenticated;
-grant execute on function public.finish_setup(text) to authenticated;
 grant execute on function public.my_tests() to authenticated;
 grant execute on function public.get_test(uuid) to authenticated;
 grant execute on function public.submit_test(uuid, jsonb) to authenticated;
-grant execute on function public.group_rating() to authenticated;
-grant execute on function public.curator_students() to authenticated;
-grant execute on function public.curator_remove_student(uuid) to authenticated;
-grant execute on function public.curator_test_results(uuid) to authenticated;
-grant execute on function public.curator_overview() to authenticated;
+grant execute on function public.test_rating() to authenticated;
+grant execute on function public.admin_test_results(uuid) to authenticated;
 grant execute on function public.admin_users() to authenticated;
-grant execute on function public.admin_set_curator_status(uuid, text) to authenticated;
 
 notify pgrst, 'reload schema';

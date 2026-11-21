@@ -10,11 +10,11 @@ import { BarList, ColumnChart } from './Charts';
 export default function AdminDashboard() {
   const { api, profile } = useSession();
   const { data, loading } = useAsync(async () => {
-    const [stats, students, comics, books, users] = await Promise.all([api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks(), api.adminUsers()]);
-    return { stats, students, comics, books, pending: users.filter((u) => u.role === 'curator' && u.curator_status === 'pending') };
+    const [stats, students, comics, books] = await Promise.all([api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks()]);
+    return { stats, students, comics, books };
   }, []);
   if (loading || !data) return <PageLoader />;
-  const { stats: s, students, comics, books, pending } = data;
+  const { stats: s, students, comics, books } = data;
   const recent = [...comics.map((c) => ({ ...c, kind: 'Комикс' })), ...books.map((b) => ({ ...b, kind: 'Кітап' }))]
     .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
 
@@ -29,6 +29,8 @@ export default function AdminDashboard() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Link to="/admin/comics?new=1" className="btn btn-sun"><IPlus /> Комикс жүктеу</Link>
               <Link to="/admin/books?new=1" className="btn bg-white/10 text-white hover:bg-white/20"><IPlus /> Кітап жүктеу</Link>
+              <Link to="/admin/tests/new" className="btn bg-white/10 text-white hover:bg-white/20"><IPlus /> Сауалнама</Link>
+              <Link to="/admin/materials?new=1" className="btn bg-white/10 text-white hover:bg-white/20"><IPlus /> Материал</Link>
             </div>
           </div>
           <div className="relative hidden h-40 w-64 shrink-0 md:block">
@@ -37,17 +39,6 @@ export default function AdminDashboard() {
           </div>
         </div>
       </section>
-
-      {pending.length > 0 && (
-        <Link to="/admin/users" className="card card-hover flex items-center gap-4 p-4 ring-2 ring-sun sm:p-5">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-sun/40 text-2xl">🧑‍🏫</span>
-          <div className="min-w-0 flex-1">
-            <p className="font-extrabold">{pending.length} куратор растауды күтуде</p>
-            <p className="truncate text-sm text-ink/55">{pending.map((p) => `${p.first_name} ${p.last_name}`).join(', ')}</p>
-          </div>
-          <span className="btn btn-sun btn-sm shrink-0">Қарау</span>
-        </Link>
-      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={<IUsers />} label="Оқушылар" value={s.students} sub={`Бүгін белсенді: ${s.active_today}`} />

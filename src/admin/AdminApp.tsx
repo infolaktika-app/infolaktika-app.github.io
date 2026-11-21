@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { Logo } from '../components/Art';
-import { IBook, IChart, IComic, IFile, IGame, IGrid, ILogout, IMenu, ISettings, IUsers, IX } from '../components/Icons';
+import { IBook, IChart, IClipboard, IComic, IFile, IGame, IGrid, ILogout, IMenu, ISettings, IUsers, IX } from '../components/Icons';
 import { Avatar } from '../components/ui';
 import { IS_DEMO } from '../lib/api';
 import { useAuth, useSession } from '../lib/auth';
@@ -15,6 +15,7 @@ import StatsPage from './StatsPage';
 import { StudentDetailPage } from './Students';
 import UsersPage from './Users';
 import MaterialsPage from '../pages/Materials';
+import TestsManager, { TestEditor, TestResults } from './TestsManager';
 import { MadeBy } from '../components/MadeBy';
 
 const NAV = [
@@ -22,7 +23,8 @@ const NAV = [
   { to: '/admin/comics', label: 'Комикстерді басқару', icon: IComic },
   { to: '/admin/books', label: 'Кітаптарды басқару', icon: IBook },
   { to: '/admin/games', label: 'Ойындарды басқару', icon: IGame },
-  { to: '/admin/users', label: 'Пайдаланушылар', icon: IUsers },
+  { to: '/admin/users', label: 'Оқушылар', icon: IUsers },
+  { to: '/admin/tests', label: 'Сауалнамалар', icon: IClipboard },
   { to: '/admin/materials', label: 'Материалдар', icon: IFile },
   { to: '/admin/stats', label: 'Статистика', icon: IChart },
   { to: '/admin/settings', label: 'Settings', icon: ISettings },
@@ -69,6 +71,10 @@ export default function AdminApp() {
   else if (path === '/admin/games') page = <GamesManager />;
   else if (path === '/admin/users' || path === '/admin/students') page = <UsersPage />;
   else if (path === '/admin/materials') page = <MaterialsPage />;
+  else if (path === '/admin/tests') page = <TestsManager />;
+  else if (path === '/admin/tests/new') page = <TestEditor />;
+  else if ((m = match('/admin/tests/:id/edit', path))) page = <TestEditor id={m.id} />;
+  else if ((m = match('/admin/tests/:id', path))) page = <TestResults id={m.id} />;
   else if ((m = match('/admin/students/:id', path))) page = <StudentDetailPage id={m.id} />;
   else if (path === '/admin/stats') page = <StatsPage />;
   else if (path === '/admin/settings') page = <SettingsPage />;

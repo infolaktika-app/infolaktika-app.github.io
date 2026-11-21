@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GroupRating } from '../components/GroupRating';
 import { IChevL, IEdit, IPlus, ITrash } from '../components/Icons';
 import { Avatar, Confirm, Empty, PageLoader, ProgressBar, Spinner, StatCard } from '../components/ui';
 import { friendlyError } from '../lib/api';
@@ -13,10 +12,10 @@ import { useAsync } from '../lib/useAsync';
 const blankQ = (): TestQuestion => ({ q: '', options: ['', '', '', ''], answer: 0 });
 const LETTERS = 'ABCD';
 
-export default function CuratorTests() {
+export default function TestsManager() {
   const { api } = useSession();
   const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.curatorTests(), []);
+  const { data, loading, reload } = useAsync(() => api.adminTests(), []);
   const [del, setDel] = useState<Test | null>(null);
   const [busy, setBusy] = useState(false);
   if (loading && !data) return <PageLoader />;
@@ -26,15 +25,15 @@ export default function CuratorTests() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Сауалнама / Тесттер</h1>
-          <p className="mt-1 text-ink/55">Тесттер тек сіздің оқушыларыңызға ашық. Әр дұрыс жауап — 1 ұпай.</p>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Сауалнамалар</h1>
+          <p className="mt-1 text-ink/55">Жарияланған сауалнамаларды тіркелген барлық оқушы көреді. Әр дұрыс жауап — 1 ұпай + 10 💎.</p>
         </div>
-        <Link to="/curator/tests/new" className="btn btn-primary"><IPlus className="h-5 w-5" /> Жаңа тест</Link>
+        <Link to="/admin/tests/new" className="btn btn-primary"><IPlus className="h-5 w-5" /> Жаңа сауалнама</Link>
       </div>
 
       {tests.length === 0 ? (
-        <Empty title="Әзірге тест жоқ" text="Сұрақтар мен 4 жауап нұсқасын жазып, бірінші тестіңізді құрастырыңыз."
-          action={<Link to="/curator/tests/new" className="btn btn-primary"><IPlus className="h-5 w-5" /> Тест құрастыру</Link>} />
+        <Empty title="Әзірге сауалнама жоқ" text="Сұрақтар мен 4 жауап нұсқасын жазып, бірінші сауалнаманы құрастырыңыз."
+          action={<Link to="/admin/tests/new" className="btn btn-primary"><IPlus className="h-5 w-5" /> Сауалнама құрастыру</Link>} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {tests.map((t) => (
@@ -47,19 +46,19 @@ export default function CuratorTests() {
               {t.description && <p className="mt-1 line-clamp-2 text-sm text-ink/55">{t.description}</p>}
               <p className="mt-2 text-xs text-ink/40">{formatDate(t.created_at)}</p>
               <div className="mt-auto flex items-center gap-2 pt-4">
-                <Link to={`/curator/tests/${t.id}`} className="btn btn-soft btn-sm flex-1">Нәтижелер</Link>
-                <Link to={`/curator/tests/${t.id}/edit`} className="icon-btn !h-10 !w-10" aria-label="Өңдеу" title="Өңдеу"><IEdit className="h-[18px] w-[18px]" /></Link>
+                <Link to={`/admin/tests/${t.id}`} className="btn btn-soft btn-sm flex-1">Нәтижелер</Link>
+                <Link to={`/admin/tests/${t.id}/edit`} className="icon-btn !h-10 !w-10" aria-label="Өңдеу" title="Өңдеу"><IEdit className="h-[18px] w-[18px]" /></Link>
                 <button className="icon-btn !h-10 !w-10 hover:!text-rose-500" onClick={() => setDel(t)} aria-label="Жою" title="Жою"><ITrash className="h-[18px] w-[18px]" /></button>
               </div>
             </article>
           ))}
         </div>
       )}
-      <Confirm open={!!del} onClose={() => setDel(null)} busy={busy} title="Тест жойылсын ба?"
+      <Confirm open={!!del} onClose={() => setDel(null)} busy={busy} title="Сауалнама жойылсын ба?"
         text={`«${del?.title}» және оның барлық нәтижелері жойылады.`}
         onConfirm={async () => {
           setBusy(true);
-          try { await api.deleteTest(del!.id); toast.success('Тест жойылды'); setDel(null); reload(); }
+          try { await api.deleteTest(del!.id); toast.success('Сауалнама жойылды'); setDel(null); reload(); }
           catch (e) { toast.error(friendlyError(e)); } finally { setBusy(false); }
         }} />
     </div>
@@ -69,7 +68,7 @@ export default function CuratorTests() {
 export function TestEditor({ id }: { id?: string }) {
   const { api } = useSession();
   const toast = useToast();
-  const existing = useAsync(() => (id ? api.curatorTests().then((l) => l.find((t) => t.id === id) ?? null) : Promise.resolve(null)), [id]);
+  const existing = useAsync(() => (id ? api.adminTests().then((l) => l.find((t) => t.id === id) ?? null) : Promise.resolve(null)), [id]);
   const results = useAsync(() => (id ? api.testResults(id) : Promise.resolve([])), [id]);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -85,14 +84,14 @@ export function TestEditor({ id }: { id?: string }) {
 
   const problems = useMemo(() => qs.map((q) => !q.q.trim() || q.options.some((o) => !o.trim())), [qs]);
   if (existing.loading) return <PageLoader />;
-  if (id && !existing.data) return <Empty title="Тест табылмады" action={<Link to="/curator/tests" className="btn btn-primary">Тесттерге</Link>} />;
+  if (id && !existing.data) return <Empty title="Сауалнама табылмады" action={<Link to="/admin/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
 
   const upd = (i: number, patch: Partial<TestQuestion>) => setQs((x) => x.map((q, k) => (k === i ? { ...q, ...patch } : q)));
   const updOpt = (i: number, j: number, v: string) => setQs((x) => x.map((q, k) => (k === i ? { ...q, options: q.options.map((o, m) => (m === j ? v : o)) } : q)));
 
   const save = async () => {
     setShowErrors(true);
-    if (!title.trim()) return toast.error('Тест атауын жазыңыз');
+    if (!title.trim()) return toast.error('Атауын жазыңыз');
     const bad = problems.findIndex(Boolean);
     if (bad >= 0) {
       document.getElementById(`q-${bad}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -101,8 +100,8 @@ export function TestEditor({ id }: { id?: string }) {
     setBusy(true);
     try {
       await api.saveTest({ id, title, description: desc, published, questions: qs.map((q) => ({ q: q.q.trim(), options: q.options.map((o) => o.trim()), answer: q.answer })) });
-      toast.success(id ? 'Тест сақталды' : 'Тест құрастырылды', published ? 'Оқушыларыңызға хабарлама жіберілді' : undefined);
-      navigate('/curator/tests');
+      toast.success(id ? 'Сақталды' : 'Сауалнама жарияланды', published && !id ? 'Барлық оқушыға хабарлама жіберілді' : undefined);
+      navigate('/admin/tests');
     } catch (e) {
       toast.error(friendlyError(e));
     } finally {
@@ -112,22 +111,22 @@ export function TestEditor({ id }: { id?: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/curator/tests')}><IChevL className="h-4 w-4" /> Тесттер</button>
-      <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{id ? 'Тестті өңдеу' : 'Жаңа тест'}</h1>
+      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/tests')}><IChevL className="h-4 w-4" /> Сауалнамалар</button>
+      <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{id ? 'Сауалнаманы өңдеу' : 'Жаңа сауалнама'}</h1>
       {id && (results.data?.length ?? 0) > 0 && (
-        <p className="rounded-2xl bg-sun/25 px-4 py-3 text-sm font-semibold text-ink/75">⚠️ Бұл тестті {results.data!.length} оқушы тапсырып қойған. Сұрақтарды өзгертсеңіз, олардың бұрынғы ұпайы сақталады.</p>
+        <p className="rounded-2xl bg-sun/25 px-4 py-3 text-sm font-semibold text-ink/75">⚠️ Бұл сауалнаманы {results.data!.length} оқушы тапсырып қойған. Сұрақтарды өзгертсеңіз, олардың бұрынғы ұпайы сақталады.</p>
       )}
 
       <div className="card space-y-4 p-5 sm:p-6">
-        <label className="block"><span className="label">Тест атауы</span>
+        <label className="block"><span className="label">Атауы</span>
           <input className={`input ${showErrors && !title.trim() ? '!ring-2 !ring-rose-300' : ''}`} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="мысалы: Python негіздері — 1-апта" />
         </label>
         <label className="block"><span className="label">Сипаттама (міндетті емес)</span>
-          <textarea className="input min-h-20" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={1000} placeholder="Тест не туралы?" />
+          <textarea className="input min-h-20" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={1000} placeholder="Не туралы?" />
         </label>
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" className="h-5 w-5 accent-[#17404E]" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-          <span className="font-semibold">Оқушыларға бірден жариялау</span>
+          <span className="font-semibold">Бірден жариялау (барлық оқушыға көрінеді)</span>
         </label>
       </div>
 
@@ -163,7 +162,7 @@ export function TestEditor({ id }: { id?: string }) {
       <div className="card p-4">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm font-semibold text-ink/50">{qs.length} сұрақ</span>
-          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} {id ? 'Сақтау' : 'Тестті жариялау'}</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} {id ? 'Сақтау' : 'Жариялау'}</button>
         </div>
       </div>
     </div>
@@ -172,26 +171,26 @@ export function TestEditor({ id }: { id?: string }) {
 
 export function TestResults({ id }: { id: string }) {
   const { api } = useSession();
-  const test = useAsync(() => api.curatorTests().then((l) => l.find((t) => t.id === id) ?? null), [id]);
+  const test = useAsync(() => api.adminTests().then((l) => l.find((t) => t.id === id) ?? null), [id]);
   const res = useAsync(() => api.testResults(id), [id]);
-  const students = useAsync(() => api.curatorStudents(), []);
+  const students = useAsync(() => api.adminUsers(), []);
   if (test.loading || res.loading) return <PageLoader />;
   const t = test.data;
-  if (!t) return <Empty title="Тест табылмады" action={<Link to="/curator/tests" className="btn btn-primary">Тесттерге</Link>} />;
+  if (!t) return <Empty title="Сауалнама табылмады" action={<Link to="/admin/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
   const rows = res.data ?? [];
   const done = new Set(rows.map((r) => r.user_id));
-  const missing = (students.data ?? []).filter((s) => !done.has(s.id));
+  const missing = (students.data ?? []).filter((s) => !done.has(s.id) && !s.is_blocked);
   const avg = rows.length ? Math.round((rows.reduce((s, r) => s + r.score / r.max_score, 0) / rows.length) * 100) : null;
 
   return (
     <div className="space-y-6">
-      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/curator/tests')}><IChevL className="h-4 w-4" /> Тесттер</button>
+      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/tests')}><IChevL className="h-4 w-4" /> Сауалнамалар</button>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{t.title}</h1>
           <p className="mt-1 text-ink/55">{t.questions.length} сұрақ · {formatDate(t.created_at)}</p>
         </div>
-        <Link to={`/curator/tests/${t.id}/edit`} className="btn btn-soft btn-sm self-start sm:self-auto"><IEdit className="h-4 w-4" /> Өңдеу</Link>
+        <Link to={`/admin/tests/${t.id}/edit`} className="btn btn-soft btn-sm self-start sm:self-auto"><IEdit className="h-4 w-4" /> Өңдеу</Link>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <StatCard icon="✅" label="Тапсырды" value={rows.length} tone="#5E9A45" />
@@ -221,26 +220,11 @@ export function TestResults({ id }: { id: string }) {
         <section>
           <h2 className="mb-3 font-extrabold">Әлі тапсырмағандар ({missing.length})</h2>
           <div className="flex flex-wrap gap-2">
-            {missing.map((s) => <span key={s.id} className="chip bg-card !px-3 !py-1.5 text-sm text-ink/70 shadow-[0_2px_0_var(--edge)]">{s.first_name} {s.last_name}</span>)}
+            {missing.slice(0, 60).map((s) => <span key={s.id} className="chip bg-card !px-3 !py-1.5 text-sm text-ink/70 shadow-[0_2px_0_var(--edge)]">{s.first_name} {s.last_name}{s.stream ? ` · ${s.stream}` : ''}</span>)}
+            {missing.length > 60 && <span className="chip bg-mist !px-3 !py-1.5 text-sm text-ink/50">+{missing.length - 60}</span>}
           </div>
         </section>
       )}
     </div>
   );
 }
-
-export function CuratorRating() {
-  const { api } = useSession();
-  const { data, loading } = useAsync(() => api.groupRating(), []);
-  if (loading && !data) return <PageLoader />;
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Оқушылар рейтингі</h1>
-        <p className="mt-1 text-ink/55">Сіздің тесттеріңізден жинаған ұпайлар бойынша</p>
-      </div>
-      <GroupRating rows={data ?? []} />
-    </div>
-  );
-}
-

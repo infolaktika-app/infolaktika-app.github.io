@@ -6,7 +6,7 @@ import { StudentLayout } from './components/StudentLayout';
 import { PageLoader } from './components/ui';
 import { CursorFX } from './components/CursorFX';
 import Landing from './pages/Landing';
-import { AdminLogin, Login, Register, Setup } from './pages/Auth';
+import { AdminLogin, Login, Register } from './pages/Auth';
 import type { Profile } from './lib/types';
 import NotFound from './pages/NotFound';
 
@@ -22,13 +22,6 @@ const AdminApp = lazy(() => import('./admin/AdminApp'));
 const TestsPage = lazy(() => import('./pages/Tests'));
 const TestTake = lazy(() => import('./pages/Tests').then((m) => ({ default: m.TestTake })));
 const Materials = lazy(() => import('./pages/Materials'));
-const CuratorHome = lazy(() => import('./curator/CuratorHome'));
-const CuratorPending = lazy(() => import('./curator/CuratorHome').then((m) => ({ default: m.CuratorPending })));
-const CuratorStudents = lazy(() => import('./curator/CuratorStudents'));
-const CuratorTests = lazy(() => import('./curator/CuratorTests'));
-const TestEditor = lazy(() => import('./curator/CuratorTests').then((m) => ({ default: m.TestEditor })));
-const TestResults = lazy(() => import('./curator/CuratorTests').then((m) => ({ default: m.TestResults })));
-const CuratorRating = lazy(() => import('./curator/CuratorTests').then((m) => ({ default: m.CuratorRating })));
 
 type Route = { path: string; render: (p: Record<string, string>) => ReactNode };
 
@@ -48,24 +41,9 @@ const STUDENT: Route[] = [
   { path: '/app/materials', render: () => <Materials /> },
 ];
 
-const CURATOR: Route[] = [
-  { path: '/curator', render: () => <CuratorHome /> },
-  { path: '/curator/students', render: () => <CuratorStudents /> },
-  { path: '/curator/tests', render: () => <CuratorTests /> },
-  { path: '/curator/tests/new', render: () => <TestEditor /> },
-  { path: '/curator/tests/:id', render: (p) => <TestResults id={p.id} /> },
-  { path: '/curator/tests/:id/edit', render: (p) => <TestEditor id={p.id} /> },
-  { path: '/curator/materials', render: () => <Materials /> },
-  { path: '/curator/rating', render: () => <CuratorRating /> },
-  { path: '/curator/profile', render: () => <ProfilePage /> },
-];
-
 /** Where a signed-in user belongs. */
 function homeFor(p: Profile) {
-  if (p.role === 'admin') return '/admin';
-  if (p.role === 'curator') return '/curator';
-  if (p.must_change) return '/setup';
-  return '/app';
+  return p.role === 'admin' ? '/admin' : '/app';
 }
 
 function renderIn(routes: Route[], path: string) {
@@ -92,11 +70,6 @@ function Routes() {
   if (path === '/') return profile ? <Redirect to={homeFor(profile)} /> : <Landing />;
   if (path === '/login') return profile ? <Redirect to={homeFor(profile)} /> : <Login />;
   if (path === '/register') return profile ? <Redirect to={homeFor(profile)} /> : <Register />;
-  if (path === '/setup') {
-    if (!profile) return <Redirect to="/login" />;
-    if (profile.role !== 'student' || !profile.must_change) return <Redirect to={homeFor(profile)} />;
-    return <Setup />;
-  }
   if (path === '/admin/login') return profile?.role === 'admin' ? <Redirect to="/admin" /> : <AdminLogin />;
 
   // ---- admin (role checked here AND enforced by RLS on the server) ----
@@ -109,17 +82,10 @@ function Routes() {
   // ---- student ----
   if (path === '/app' || path.startsWith('/app/')) {
     if (!profile) return <Redirect to={`/login?next=${encodeURIComponent(path)}`} />;
-    if (profile.role !== 'student' || profile.must_change) return <Redirect to={homeFor(profile)} />;
+    if (profile.role !== 'student') return <Redirect to={homeFor(profile)} />;
     return renderIn(STUDENT, path);
   }
 
-  // ---- curator (approved curators only; enforced again by RLS / RPC checks) ----
-  if (path === '/curator' || path.startsWith('/curator/')) {
-    if (!profile) return <Redirect to={`/login?next=${encodeURIComponent(path)}`} />;
-    if (profile.role !== 'curator') return <Redirect to={homeFor(profile)} />;
-    if (profile.curator_status !== 'approved') return <Suspense fallback={<PageLoader />}><CuratorPending /></Suspense>;
-    return renderIn(CURATOR, path);
-  }
   return <NotFound />;
 }
 

@@ -6,7 +6,7 @@ import { Link, navigate, useLocation } from '../lib/router';
 import type { Notification } from '../lib/types';
 import { Logo } from './Art';
 import {
-  IAward, IBell, IBook, IClipboard, IComic, IFile, IGame, IHome, ILogout, IMenu, ITrophy, IUser, IUsers, IX,
+  IAward, IBell, IBook, IClipboard, IComic, IFile, IGame, IHome, ILogout, IMenu, ITrophy, IUser, IX,
 } from './Icons';
 import { Avatar } from './ui';
 import { MadeBy } from './MadeBy';
@@ -18,26 +18,15 @@ const STUDENT_NAV: NavItem[] = [
   { to: '/app/comics', label: 'Комикстер', icon: IComic },
   { to: '/app/games', label: 'Ойындар', icon: IGame, tab: true },
   { to: '/app/books', label: 'Кітапхана', icon: IBook },
-  { to: '/app/tests', label: 'Тесттер', icon: IClipboard, tab: true },
+  { to: '/app/tests', label: 'Сауалнамалар', short: 'Сауалнама', icon: IClipboard, tab: true },
   { to: '/app/materials', label: 'Материалдар', icon: IFile },
   { to: '/app/achievements', label: 'Менің жетістіктерім', icon: IAward },
   { to: '/app/leaderboard', label: 'Рейтинг', icon: ITrophy, tab: true },
   { to: '/app/profile', label: 'Профиль', icon: IUser },
 ];
 
-const CURATOR_NAV: NavItem[] = [
-  { to: '/curator', label: 'Басты бет', short: 'Басты', icon: IHome, tab: true },
-  { to: '/curator/students', label: 'Оқушыларым', short: 'Оқушылар', icon: IUsers, tab: true },
-  { to: '/curator/tests', label: 'Сауалнама / Тесттер', short: 'Тесттер', icon: IClipboard, tab: true },
-  { to: '/curator/materials', label: 'Материалдар', icon: IFile, tab: true },
-  { to: '/curator/rating', label: 'Рейтинг', icon: ITrophy },
-  { to: '/curator/profile', label: 'Профиль', icon: IUser },
-];
-
 function useNav() {
-  const { profile } = useSession();
-  const curator = profile.role === 'curator';
-  return { curator, nav: curator ? CURATOR_NAV : STUDENT_NAV, home: curator ? '/curator' : '/app' };
+  return { nav: STUDENT_NAV, home: '/app' };
 }
 
 function useNotifications() {
@@ -109,7 +98,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { profile } = useSession();
   const { signOut } = useAuth();
   const { path } = useLocation();
-  const { nav, home, curator } = useNav();
+  const { nav, home } = useNav();
   const lvl = levelFor(profile.xp);
   const active = (to: string) => (to === home ? path === home : path.startsWith(to));
 
@@ -118,7 +107,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex items-center justify-between gap-2 pl-3 pt-1">
         <Link to={home} onClick={onNavigate}><Logo /></Link>
       </div>
-      {curator && <span className="chip mx-3 mt-3 self-start bg-sun/35 text-ink">🧑‍🏫 Куратор</span>}
       <nav className="scrollbar-none -mx-1 mt-6 flex-1 space-y-1 overflow-y-auto px-1 pb-2" aria-label="Негізгі мәзір">
         {nav.map(({ to, label, icon: Icon }) => (
           <Link key={to} to={to} onClick={onNavigate} className={`nav-item ${active(to) ? 'active' : ''}`} aria-current={active(to) ? 'page' : undefined}>
@@ -133,14 +121,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <div className="min-w-0 flex-1">
             <p className="truncate font-extrabold leading-tight">{profile.first_name} {profile.last_name}</p>
             <p className="truncate text-xs font-semibold text-ink/50">
-              {curator ? `@${profile.username}` : `${lvl.level}-деңгей · ${lvl.name}${profile.stream ? ` · ${profile.stream} поток` : ''}`}
+              {`${lvl.level}-деңгей · ${lvl.name}${profile.stream ? ` · ${profile.stream} поток` : ''}`}
             </p>
           </div>
         </div>
         <div className="mt-3 flex items-center gap-2">
-          {curator
-            ? <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-haze !px-2 !py-2 text-[13px] text-brand">🧑‍🏫 Куратор</span>
-            : <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-sun/30 !px-2 !py-2 text-[13px] text-ink">💎 {profile.xp}</span>}
+          <span className="chip min-w-0 flex-1 justify-center whitespace-nowrap bg-sun/30 !px-2 !py-2 text-[13px] text-ink">💎 {profile.xp} кристалл</span>
           <div className="hidden lg:block"><BellButton placement="side" /></div>
           <button className="icon-btn !h-9 !w-9 hover:!text-rose-500" onClick={async () => { await signOut(); navigate('/login'); }} aria-label="Шығу" title="Шығу">
             <ILogout className="h-[18px] w-[18px]" />

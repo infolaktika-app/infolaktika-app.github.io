@@ -43,22 +43,21 @@ The repository includes `.github/workflows/deploy-pages.yml`:
 
 On Pages, links look like `.../infolaktika/#/app/comics`, because GitHub Pages cannot serve app routes otherwise.
 
-## Updating an existing database (v2: curators, tests, materials)
+## Updating an existing database
 
-`supabase/schema.sql` is safe to run again. On a project that already ran the first version, open *SQL Editor*, paste the **whole new `schema.sql`** and click **Run**. It adds the new columns, tables, buckets (`avatars`, `materials`), policies and functions without touching existing data. `seed.sql` does not need to run again.
+`supabase/schema.sql` is safe to run again. On a project that already ran an earlier version, open *SQL Editor*, paste the **whole new `schema.sql`** and click **Run**. It adds the stream column, the survey/test and material tables, the `avatars` and `materials` buckets, policies and functions without touching existing data (it also removes the short-lived curator role if it was installed). `seed.sql` does not need to run again.
 
 ## Roles and security
 
-| | Student | Curator | Admin |
-|---|---|---|---|
-| Sign up | `/register` → "Оқушы", stream (поток) required | `/register` → "Куратор", phone number required; account stays **pending** until an admin approves it | Only via `scripts/create-admin.mjs` (or the Supabase dashboard) |
-| Sign in | `/login` (one-time credentials from a curator lead to `/setup`, where the student picks their own login + password) | `/login` → `/curator` | `/admin/login` |
-| Content | Comics, books, games, materials, tests of *their* curator | No games/comics; Tests (4-option questions), Materials (upload checklists, published to everyone as "Авторы: …"), rating of own students | Everything; Users page (students + curators: approve, block, delete), Materials |
-| Students | Picks a curator in Profile | Sees own students; adds students (one-time login/password); deleting removes accounts the curator created, self-joined students are only removed from the group | Block, delete, adjust XP |
-| Profile | Name, avatar or own photo (`avatars` bucket, own folder only), stream, curator (column-level GRANT + trigger checks) | Name, photo, phone | — |
-| XP / progress | Only through RPCs (`complete_game`, `save_progress`, `submit_daily`, `submit_test`) | Test results via `curator_*` RPCs | `admin_*` RPCs |
+| | Student | Admin |
+|---|---|---|
+| Sign up | `/register`: name, login, **stream (поток)**, password. The DB trigger always creates a `student`. | Only via `scripts/create-admin.mjs` (or the Supabase dashboard) |
+| Sign in | `/login` | `/admin/login` |
+| Content | Comics, books, games, **surveys** (Сауалнамалар) and **materials** | Everything; publishes surveys (4-option questions, results per survey) and materials (PDF/Word/images ≤ 20 MB) that every signed-in student sees |
+| Profile | Name, built-in avatar or own photo (`avatars` bucket, own folder only), stream (column-level GRANT) | Students: block, delete, adjust crystals |
+| Crystals (XP) / progress | Only through RPCs (`complete_game`, `save_progress`, `submit_daily`, `submit_test`) | `admin_*` RPCs |
 
-The DB trigger never lets sign-up create an admin; a curator is always created as `pending`. Test answers are never sent to students before they submit (`get_test` strips them).
+Sign-up can never create an admin. Survey answers are never sent to students before they submit (`get_test` strips them).
 
 `/admin/*` routes are also blocked in the UI, but the real protection is RLS and the `is_admin()` check inside the database.
 

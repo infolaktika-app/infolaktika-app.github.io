@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { IDownload, IFile, IPlus, ISearch, ITrash, IUpload } from '../components/Icons';
-import { Confirm, Empty, Modal, PageLoader, Spinner, Tabs } from '../components/ui';
+import { Confirm, Empty, Modal, PageLoader, Spinner } from '../components/ui';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { fileIcon, fileSize, formatDate, MATERIAL_ACCEPT, MATERIAL_MAX } from '../lib/constants';
 import { useToast } from '../lib/toast';
 import type { Material } from '../lib/types';
 import { useAsync } from '../lib/useAsync';
+import { useLocation } from '../lib/router';
 
 function UploadModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const { api } = useSession();
@@ -31,7 +32,7 @@ function UploadModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
     setBusy(true);
     try {
       await api.saveMaterial({ title, description: desc, file });
-      toast.success('Материал жарияланды', 'Енді оны платформадағы барлық оқушы көреді');
+      toast.success('Материал жарияланды', 'Енді оны тіркелген барлық оқушы көреді');
       setTitle(''); setDesc(''); setFile(null);
       onDone();
       onClose();
@@ -70,7 +71,6 @@ function UploadModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
         <input ref={ref} type="file" accept={MATERIAL_ACCEPT} className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
         <label className="block"><span className="label">Атауы</span><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="мысалы: Python чек-листі" /></label>
         <label className="block"><span className="label">Сипаттама (міндетті емес)</span><textarea className="input min-h-24" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={1000} placeholder="Қысқаша не туралы екенін жазыңыз" /></label>
-        <p className="rounded-2xl bg-haze/70 px-4 py-2.5 text-xs font-semibold text-ink/60">Материал «Авторы: сіздің атыңыз» деп бүкіл платформаға жарияланады.</p>
         <div className="flex justify-end gap-3">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Бас тарту</button>
           <button className="btn btn-primary" disabled={busy}>{busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} Жариялау</button>
@@ -85,19 +85,18 @@ export default function MaterialsPage() {
   const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.listMaterials(), []);
   const [q, setQ] = useState('');
-  const [tab, setTab] = useState<'all' | 'mine'>('all');
-  const [upload, setUpload] = useState(false);
+  const { search } = useLocation();
+  const [upload, setUpload] = useState(search.get('new') === '1');
   const [del, setDel] = useState<Material | null>(null);
   const [delBusy, setDelBusy] = useState(false);
   const isAdmin = profile.role === 'admin';
-  const canUpload = isAdmin || (profile.role === 'curator' && profile.curator_status === 'approved');
+  const canUpload = isAdmin;
 
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
     return (data ?? [])
-      .filter((m) => tab === 'all' || m.author_id === profile.id)
-      .filter((m) => !n || `${m.title} ${m.description} ${m.author_name}`.toLowerCase().includes(n));
-  }, [data, q, tab, profile.id]);
+      .filter((m) => !n || `${m.title} ${m.description}`.toLowerCase().includes(n));
+  }, [data, q]);
 
   if (loading && !data) return <PageLoader />;
 
@@ -106,7 +105,7 @@ export default function MaterialsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Материалдар</h1>
-          <p className="mt-1 text-ink/55">Кураторлар дайындаған чек-листтер мен пайдалы файлдар</p>
+          <p className="mt-1 text-ink/55">{isAdmin ? 'Жүктелген материалдарды тіркелген барлық оқушы көреді' : 'Чек-листтер мен пайдалы файлдар'}</p>
         </div>
         {canUpload && <button className="btn btn-primary" onClick={() => setUpload(true)}><IPlus className="h-5 w-5" /> Материал жүктеу</button>}
       </div>
@@ -114,18 +113,17 @@ export default function MaterialsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <label className="relative flex-1">
           <ISearch className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink/35" />
-          <input className="input !pl-12" placeholder="Атауы немесе авторы бойынша іздеу…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input !pl-12" placeholder="Материалды іздеу…" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
-        {canUpload && <Tabs value={tab} onChange={setTab} items={[{ value: 'all', label: 'Барлығы' }, { value: 'mine', label: 'Менікі' }]} />}
       </div>
 
       {rows.length === 0 ? (
-        <Empty title="Материал жоқ" text={canUpload ? 'Бірінші чек-листті жүктеңіз — оны барлық оқушы көреді.' : 'Кураторлар материал жүктегенде осында шығады.'} />
+        <Empty title="Материал жоқ" text={canUpload ? 'Бірінші чек-листті жүктеңіз — оны барлық оқушы көреді.' : 'Жаңа материал жүктелгенде осында шығады.'} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((m) => {
             const fi = fileIcon(m.mime, m.file_name);
-            const canDelete = isAdmin || m.author_id === profile.id;
+            const canDelete = isAdmin;
             return (
               <article key={m.id} className="card card-hover flex flex-col p-5">
                 <div className="flex items-start gap-3">
@@ -136,7 +134,6 @@ export default function MaterialsPage() {
                   </div>
                 </div>
                 {m.description && <p className="mt-3 line-clamp-3 text-sm text-ink/60">{m.description}</p>}
-                <p className="mt-3 text-sm"><span className="text-ink/45">Авторы:</span> <b>{m.author_name}</b></p>
                 <div className="mt-auto flex items-center gap-2 pt-4">
                   {m.url ? (
                     <a href={m.url} target="_blank" rel="noopener noreferrer" className="btn btn-soft btn-sm flex-1">
