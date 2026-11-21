@@ -10,11 +10,11 @@ import { BarList, ColumnChart } from './Charts';
 export default function AdminDashboard() {
   const { api, profile } = useSession();
   const { data, loading } = useAsync(async () => {
-    const [stats, students, comics, books] = await Promise.all([api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks()]);
-    return { stats, students, comics, books };
+    const [stats, students, comics, books, users] = await Promise.all([api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks(), api.adminUsers()]);
+    return { stats, students, comics, books, pending: users.filter((u) => u.role === 'curator' && u.curator_status === 'pending') };
   }, []);
   if (loading || !data) return <PageLoader />;
-  const { stats: s, students, comics, books } = data;
+  const { stats: s, students, comics, books, pending } = data;
   const recent = [...comics.map((c) => ({ ...c, kind: 'Комикс' })), ...books.map((b) => ({ ...b, kind: 'Кітап' }))]
     .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
 
@@ -24,7 +24,7 @@ export default function AdminDashboard() {
         <div className="dot-grid absolute inset-0 opacity-15" />
         <div className="relative flex items-center justify-between gap-6">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">Сәлем, {profile.first_name || 'әкімші'}! 👋</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Сәлем, {profile.first_name || 'әкімші'}! 👋</h1>
             <p className="mt-2 max-w-lg text-white/70">Бүгін {s.active_today} оқушы белсенді болды. Жаңа материал жүктеп, оқушыларды қуантыңыз.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link to="/admin/comics?new=1" className="btn btn-sun"><IPlus /> Комикс жүктеу</Link>
@@ -38,6 +38,17 @@ export default function AdminDashboard() {
         </div>
       </section>
 
+      {pending.length > 0 && (
+        <Link to="/admin/users" className="card card-hover flex items-center gap-4 p-4 ring-2 ring-sun sm:p-5">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-sun/40 text-2xl">🧑‍🏫</span>
+          <div className="min-w-0 flex-1">
+            <p className="font-extrabold">{pending.length} куратор растауды күтуде</p>
+            <p className="truncate text-sm text-ink/55">{pending.map((p) => `${p.first_name} ${p.last_name}`).join(', ')}</p>
+          </div>
+          <span className="btn btn-sun btn-sm shrink-0">Қарау</span>
+        </Link>
+      )}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={<IUsers />} label="Оқушылар" value={s.students} sub={`Бүгін белсенді: ${s.active_today}`} />
         <StatCard icon={<IComic />} label="Комикстер" value={s.comics} tone="#63B1CB" />
@@ -45,7 +56,7 @@ export default function AdminDashboard() {
         <StatCard icon={<IGame />} label="Аяқталған ойындар" value={s.games_completed} sub={`${s.games} ойын бар`} tone="#2683A3" />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
         <div className="card p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-extrabold">Оқушылар белсенділігі · 14 күн</h2>
@@ -59,11 +70,11 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="card p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-extrabold">Жаңа оқушылар</h2>
-            <Link to="/admin/students" className="text-sm font-bold text-brand hover:underline">Барлығы →</Link>
+            <Link to="/admin/users" className="text-sm font-bold text-brand hover:underline">Барлығы →</Link>
           </div>
           {students.length === 0 && <p className="py-6 text-center text-sm text-ink/45">Әлі тіркелген оқушы жоқ</p>}
           <ul className="divide-y divide-haze">

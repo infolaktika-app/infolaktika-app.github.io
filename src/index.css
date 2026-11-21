@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 /* JUZ40 — the site font. Weights: Regular (≤450), Medium (451–649, also used for 600), Bold (≥650, also used for 800). */
-@font-face { font-family: "JUZ40"; src: url("/fonts/juz40-regular.woff") format("woff"), url("/fonts/juz40-regular.otf") format("opentype"); font-weight: 100 450; font-style: normal; font-display: swap; }
-@font-face { font-family: "JUZ40"; src: url("/fonts/juz40-medium.woff") format("woff"), url("/fonts/juz40-medium.otf") format("opentype"); font-weight: 451 649; font-style: normal; font-display: swap; }
-@font-face { font-family: "JUZ40"; src: url("/fonts/juz40-bold.woff") format("woff"), url("/fonts/juz40-bold.otf") format("opentype"); font-weight: 650 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "JUZ40"; src: url("./assets/fonts/juz40-regular.woff") format("woff"), url("./assets/fonts/juz40-regular.otf") format("opentype"); font-weight: 100 450; font-style: normal; font-display: swap; }
+@font-face { font-family: "JUZ40"; src: url("./assets/fonts/juz40-medium.woff") format("woff"), url("./assets/fonts/juz40-medium.otf") format("opentype"); font-weight: 451 649; font-style: normal; font-display: swap; }
+@font-face { font-family: "JUZ40"; src: url("./assets/fonts/juz40-bold.woff") format("woff"), url("./assets/fonts/juz40-bold.otf") format("opentype"); font-weight: 650 900; font-style: normal; font-display: swap; }
 
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
@@ -66,7 +66,13 @@
 }
 
 @layer base {
-  html { -webkit-tap-highlight-color: transparent; }
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+  /* Grid items may shrink below their content width — prevents sideways scrolling on phones. */
+  .grid > * { min-width: 0; }
+  @media (max-width: 640px) {
+    /* iOS zooms into inputs with font-size < 16px; keep them at 16px on phones. */
+    input, select, textarea { font-size: 16px !important; }
+  }
   body {
     @apply bg-mist text-ink font-sans antialiased;
     transition: background-color .3s ease, color .3s ease;
@@ -171,6 +177,33 @@
     @apply bg-card text-brand;
     box-shadow: 0 4px 0 var(--edge), 0 10px 20px -12px rgba(var(--shade), .35);
   }
+
+  .role-card {
+    @apply rounded-2xl bg-card px-4 py-3.5 text-left ring-2 ring-transparent transition;
+    box-shadow: 0 4px 0 var(--edge);
+  }
+  .role-card { position: relative; opacity: .8; }
+  .role-card:hover { opacity: 1; }
+  .role-card.active {
+    opacity: 1;
+    background: var(--haze);
+    box-shadow: 0 0 0 2.5px #17404E, 0 4px 0 #17404E;
+  }
+  .dark .role-card.active, [data-theme=dark] .role-card.active { box-shadow: 0 0 0 2.5px #8CC071, 0 4px 0 #5E9A45; }
+  .role-card.active::after {
+    content: "✓"; position: absolute; top: 10px; right: 12px; display: grid; place-items: center;
+    width: 22px; height: 22px; border-radius: 999px; background: #8CC071; color: #0F2A33; font-size: 13px; font-weight: 800;
+  }
+
+  /* mobile bottom tab bar */
+  .tab-item {
+    @apply flex min-w-0 flex-col items-center gap-0.5 rounded-2xl px-1 py-1 text-[11px] font-bold text-ink/45 transition;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab-item .tab-icon { @apply grid h-8 w-12 place-items-center rounded-full transition; }
+  .tab-item.active { @apply text-brand; }
+  .tab-item.active .tab-icon { @apply bg-sun/35; }
+  .tab-item:active .tab-icon { transform: scale(.92); }
 
   .progress-track { @apply h-2.5 w-full overflow-hidden rounded-full bg-haze; }
   .progress-fill {

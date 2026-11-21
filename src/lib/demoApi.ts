@@ -11,8 +11,9 @@ import { staticUrl } from './api';
 import { levelFor, todayKZ } from './constants';
 import type {
   Achievement, Book, Comic, ContentInput, EarnedAchievement, Game, GameResult, ItemType,
-  Notification, Profile, ReadingProgress, RewardResult, Settings,
+  Material, Notification, Profile, ReadingProgress, RewardResult, Role, Settings, Test,
 } from './types';
+import { oneTimeCredentials } from './constants';
 
 interface DemoUser extends Profile { salt: string; hash: string }
 interface DB {
@@ -29,9 +30,12 @@ interface DB {
   daily: { user_id: string; day: string; challenge_id: number; correct: boolean }[];
   notifications: (Notification & { user_id: string })[];
   settings: Settings;
+  tests: Test[];
+  attempts: { test_id: string; user_id: string; score: number; max_score: number; answers: (number | null)[]; created_at: string }[];
+  materials: Omit<Material, 'url'>[];
 }
 
-const KEY = 'infolaktika-demo-v3';
+const KEY = 'infolaktika-demo-v4';
 const listeners = new Set<() => void>();
 const uuid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -87,13 +91,22 @@ function blobToDataUrl(b: Blob): Promise<string> {
 }
 
 // ---------- seed ----------
-async function makeUser(first: string, last: string, username: string, pw: string, role: 'student' | 'admin', extra: Partial<Profile> = {}): Promise<DemoUser> {
+async function makeUser(first: string, last: string, username: string, pw: string, role: Role, extra: Partial<Profile> = {}): Promise<DemoUser> {
   const salt = uuid();
   return {
     id: uuid(), first_name: first, last_name: last, username, role, avatar: 'robot-1', xp: 0, streak: 0, best_streak: 0,
-    last_active: null, is_blocked: false, created_at: now(), salt, hash: await hashPw(pw, salt), ...extra,
+    last_active: null, is_blocked: false, created_at: now(), stream: null, phone: null, curator_status: null,
+    curator_id: null, created_by: null, must_change: false, salt, hash: await hashPw(pw, salt), ...extra,
   };
 }
+
+const SAMPLE_TEST = [
+  { q: 'Python-да экранға мәтін шығаратын функция қайсы?', options: ['input()', 'print()', 'len()', 'str()'], answer: 1 },
+  { q: '1 байт неше биттен тұрады?', options: ['4', '16', '8', '2'], answer: 2 },
+  { q: 'HTML-де ең үлкен тақырып тегі қайсы?', options: ['<h6>', '<head>', '<title>', '<h1>'], answer: 3 },
+  { q: 'Алгоритм дегеніміз не?', options: ['Нақты әрекеттер тізбегі', 'Компьютер бөлігі', 'Бағдарлама тілі', 'Файл түрі'], answer: 0 },
+  { q: 'Қай құпиясөз ең сенімді?', options: ['123456', 'qwerty', 'K7#m!pQ2z', 'aruzhan'], answer: 2 },
+];
 
 async function freshDb(): Promise<DB> {
   const t = todayKZ();
@@ -104,9 +117,13 @@ async function freshDb(): Promise<DB> {
     comics: seed.comics.map((c, i) => ({ ...c, published: true, created_at: created(seed.comics.length - 1 - i) })),
     books: seed.books.map((b, i) => ({ ...b, published: true, created_at: created(10 - i) })),
     games, results: [], progress: [], xp: [], earned: [], daily: [], notifications: [],
-    settings: { ...seed.settings },
+    settings: { ...seed.settings }, tests: [], attempts: [], materials: [],
   };
   db.users.push(await makeUser('Әкімші', '', 'admin', 'admin123', 'admin'));
+  const curator = await makeUser('Айжан', 'Серікова', 'curator', 'curator123', 'curator', {
+    phone: '+77011234567', curator_status: 'approved', avatar: 'owl', created_at: created(25) });
+  db.users.push(curator);
+  db.users.push(await makeUser('Бекзат', 'Нұрланов', 'bekzat', uuid(), 'curator', { phone: '+77779876543', curator_status: 'pending', created_at: created(0) }));
   // A few classmates so the leaderboard and admin tables are not empty.
   const mates: [string, string, string, number, string, number][] = [
     ['Айгерім', 'Нұрланқызы', 'aigerim', 1340, 'owl', 6],
@@ -116,8 +133,11 @@ async function freshDb(): Promise<DB> {
     ['Дана', 'Серікқызы', 'dana', 260, 'unicorn', 1],
     ['Ерасыл', 'Қайратұлы', 'erasyl', 120, 'panda', 1],
   ];
-  for (const [f, l, u, xp, av, streak] of mates) {
-    const user = await makeUser(f, l, u, uuid(), 'student', { xp, avatar: av, streak, best_streak: streak, last_active: t, created_at: created(20) });
+  const streams = ['01', '11', '21', '01', '11', '21'];
+  for (const [k, [f, l, u, xp, av, streak]] of mates.entries()) {
+    const user = await makeUser(f, l, u, uuid(), 'student', {
+      xp, avatar: av, streak, best_streak: streak, last_active: t, created_at: created(20),
+      stream: streams[k], curator_id: k < 4 ? curator.id : null });
     db.users.push(user);
     const n = Math.min(games.length, Math.round(xp / 120));
     for (let i = 0; i < n; i++) {
@@ -129,6 +149,21 @@ async function freshDb(): Promise<DB> {
     db.comics.slice(0, 1 + (xp > 700 ? 2 : 0)).forEach((c) =>
       db.progress.push({ user_id: user.id, item_type: 'comic', item_id: c.id, last_page: c.pages ?? 1, total_pages: c.pages ?? 1, completed: true, completed_at: created(2), updated_at: created(2) }));
   }
+  const test: Test = {
+    id: uuid(), curator_id: curator.id, title: 'Информатика негіздері: апталық тест', description: 'Python, HTML, байт және алгоритм бойынша 5 сұрақ.',
+    questions: SAMPLE_TEST, published: true, created_at: created(3), updated_at: created(3),
+  };
+  db.tests.push(test);
+  db.users.filter((u) => u.curator_id === curator.id).slice(0, 3).forEach((u, i) => {
+    const answers = SAMPLE_TEST.map((q, j) => (j < 4 - i ? q.answer : (q.answer + 1) % 4));
+    const score = answers.filter((a, j) => a === SAMPLE_TEST[j].answer).length;
+    db.attempts.push({ test_id: test.id, user_id: u.id, score, max_score: 5, answers, created_at: created(2 - i * 0.3) });
+  });
+  db.materials.push({
+    id: uuid(), author_id: curator.id, author_name: 'Айжан Серікова', title: 'Python: алғашқы бағдарлама чек-листі',
+    description: 'Тақырыпты өткен соң әр пунктті белгілеп шық.', file_path: 'sample/checklist-python.pdf',
+    file_name: 'checklist-python.pdf', mime: 'application/pdf', size: 57550, created_at: created(1),
+  });
   return db;
 }
 
@@ -158,10 +193,35 @@ export async function createDemoApi(): Promise<Api> {
     if (u.role !== 'admin') throw new Error('forbidden');
     return u;
   };
+  const curatorMe = () => {
+    const u = me();
+    if (u.role !== 'curator' || u.curator_status !== 'approved') throw new Error('forbidden');
+    return u;
+  };
+  const isApprovedCurator = (id: string | null | undefined) =>
+    !!id && db.users.some((x) => x.id === id && x.role === 'curator' && x.curator_status === 'approved' && !x.is_blocked);
+  const fullName = (u: { first_name: string; last_name: string }) => `${u.first_name} ${u.last_name}`.trim();
   const strip = ({ salt, hash, ...p }: DemoUser): Profile => p;
+  function removeUser(id: string) {
+    db.users = db.users.filter((x) => x.id !== id);
+    for (const k of ['results', 'progress', 'xp', 'earned', 'daily', 'notifications', 'attempts'] as const)
+      (db as any)[k] = (db as any)[k].filter((x: any) => x.user_id !== id);
+    const testIds = new Set(db.tests.filter((t) => t.curator_id === id).map((t) => t.id));
+    db.tests = db.tests.filter((t) => t.curator_id !== id);
+    db.attempts = db.attempts.filter((a) => !testIds.has(a.test_id));
+    db.materials = db.materials.filter((m) => m.author_id !== id);
+    db.users.forEach((x) => {
+      if (x.curator_id === id) x.curator_id = null;
+      if (x.created_by === id) x.created_by = null;
+    });
+  }
   const notify = (user_id: string, title: string, body: string, link: string | null) =>
     db.notifications.push({ id: uuid(), user_id, title, body, link, read: false, created_at: now() });
 
+  function notifyTest(t: Test) {
+    for (const s of db.users.filter((x) => x.role === 'student' && x.curator_id === t.curator_id))
+      notify(s.id, 'Жаңа тест! 📝', t.title, `/app/tests/${t.id}`);
+  }
   function award(u: DemoUser, amount: number, reason: string, ref: string | null) {
     if (!amount) return;
     const before = levelFor(u.xp).level;
@@ -270,7 +330,9 @@ export async function createDemoApi(): Promise<Api> {
       const username = i.username.trim().toLowerCase();
       if (db.users.some((u) => u.username === username)) throw new Error('already exists');
       if (i.password.length < 6) throw new Error('password too short');
-      const u = await makeUser(i.first_name.trim(), i.last_name.trim(), username, i.password, 'student');
+      if (i.role === 'curator' && !i.phone) throw new Error('phone required for curator');
+      const u = await makeUser(i.first_name.trim(), i.last_name.trim(), username, i.password, i.role === 'curator' ? 'curator' : 'student',
+        i.role === 'curator' ? { phone: i.phone ?? null, curator_status: 'pending' } : { stream: i.stream?.trim() || null });
       db.users.push(u);
       db.session = u.id;
       save();
@@ -303,8 +365,212 @@ export async function createDemoApi(): Promise<Api> {
       if (patch.first_name !== undefined) u.first_name = patch.first_name;
       if (patch.last_name !== undefined) u.last_name = patch.last_name;
       if (patch.avatar !== undefined) u.avatar = patch.avatar;
+      if (patch.stream !== undefined) u.stream = patch.stream || null;
+      if (patch.phone !== undefined) {
+        if (u.role === 'curator' && !patch.phone) throw new Error('phone required for curator');
+        u.phone = patch.phone || null;
+      }
+      if (patch.curator_id !== undefined && patch.curator_id !== u.curator_id) {
+        if (patch.curator_id) {
+          if (u.role !== 'student') throw new Error('only students can pick a curator');
+          if (!isApprovedCurator(patch.curator_id)) throw new Error('curator not found');
+          notify(patch.curator_id, 'Жаңа оқушы 🎓', `${fullName(u)} сізді куратор етіп таңдады`, '/curator/students');
+        }
+        u.curator_id = patch.curator_id || null;
+      }
       save();
       emit();
+    },
+    async uploadAvatar(photo) {
+      me();
+      return blobToDataUrl(photo);
+    },
+    async finishSetup(username, password) {
+      const u = me();
+      const name = username.trim().toLowerCase();
+      if (!/^[a-z0-9_.]{3,24}$/.test(name)) throw new Error('invalid username');
+      if (db.users.some((x) => x.username === name && x.id !== u.id)) throw new Error('username already exists');
+      if (password.length < 6) throw new Error('password too short');
+      u.username = name;
+      u.salt = uuid();
+      u.hash = await hashPw(password, u.salt);
+      u.must_change = false;
+      save();
+      emit();
+    },
+    async listCurators() {
+      return delay(db.users.filter((x) => x.role === 'curator' && x.curator_status === 'approved' && !x.is_blocked)
+        .map((c) => ({ id: c.id, first_name: c.first_name, last_name: c.last_name, avatar: c.avatar,
+          students: db.users.filter((s) => s.curator_id === c.id && s.role === 'student').length })));
+    },
+
+    async myTests() {
+      const u = me();
+      const rows = db.tests.filter((t) => (t.published && t.curator_id === u.curator_id) || db.attempts.some((a) => a.test_id === t.id && a.user_id === u.id));
+      return delay(rows.sort((a, b) => b.created_at.localeCompare(a.created_at)).map((t) => {
+        const a = db.attempts.find((x) => x.test_id === t.id && x.user_id === u.id);
+        const c = db.users.find((x) => x.id === t.curator_id);
+        return { id: t.id, title: t.title, description: t.description, question_count: t.questions.length, created_at: t.created_at,
+          curator_name: c ? fullName(c) : '', score: a?.score ?? null, max_score: a?.max_score ?? null, done_at: a?.created_at ?? null };
+      }));
+    },
+    async getTest(id) {
+      const u = me();
+      const t = db.tests.find((x) => x.id === id);
+      const a = db.attempts.find((x) => x.test_id === id && x.user_id === u.id);
+      if (!t || (!a && !(t.published && t.curator_id === u.curator_id) && t.curator_id !== u.id && u.role !== 'admin')) throw new Error('test not found');
+      const c = db.users.find((x) => x.id === t.curator_id);
+      return delay({
+        id: t.id, title: t.title, description: t.description, curator_name: c ? fullName(c) : '',
+        questions: t.questions.map((q) => ({ q: q.q, options: q.options })),
+        attempt: a ? { score: a.score, max_score: a.max_score, answers: a.answers, created_at: a.created_at, correct: t.questions.map((q) => q.answer) } : null,
+      });
+    },
+    async submitTest(id, answers) {
+      const u = me();
+      if (u.role !== 'student') throw new Error('forbidden');
+      const t = db.tests.find((x) => x.id === id && x.published);
+      if (!t || t.curator_id !== u.curator_id) throw new Error('test not found');
+      if (db.attempts.some((a) => a.test_id === id && a.user_id === u.id)) throw new Error('test already answered');
+      const clean = t.questions.map((_, i) => (typeof answers[i] === 'number' ? answers[i] : null));
+      const score = clean.filter((a, i) => a === t.questions[i].answer).length;
+      db.attempts.push({ test_id: id, user_id: u.id, score, max_score: t.questions.length, answers: clean, created_at: now() });
+      const xp = score * 10;
+      award(u, xp, 'test', t.title);
+      touch(u);
+      const achievements = checkAchievements(u);
+      save();
+      return { score, max_score: t.questions.length, xp, bonus: 0, achievements, correct: t.questions.map((q) => q.answer) };
+    },
+    async groupRating() {
+      const u = me();
+      const cur = u.role === 'curator' ? u.id : u.curator_id;
+      if (!cur) return delay([]);
+      const tests = new Set(db.tests.filter((t) => t.curator_id === cur).map((t) => t.id));
+      const rows = db.users.filter((x) => x.role === 'student' && x.curator_id === cur && !x.is_blocked).map((x) => {
+        const mine = db.attempts.filter((a) => a.user_id === x.id && tests.has(a.test_id));
+        return { id: x.id, first_name: x.first_name, last_name: x.last_name, avatar: x.avatar, stream: x.stream,
+          points: mine.reduce((s, a) => s + a.score, 0), tests_done: mine.length };
+      }).sort((a, b) => b.points - a.points || a.last_name.localeCompare(b.last_name, 'kk'));
+      return delay(rows.map((r) => ({ ...r, rank: rows.filter((y) => y.points > r.points).length + 1 })));
+    },
+
+    async listMaterials() {
+      me();
+      const rows = [...db.materials].sort((a, b) => b.created_at.localeCompare(a.created_at));
+      return Promise.all(rows.map(async (m) => {
+        let url: string | null = null;
+        if (m.file_path.startsWith('idb:')) {
+          const b = await idbGet(m.file_path);
+          url = b ? URL.createObjectURL(b) : null;
+        } else url = staticUrl(m.file_path);
+        return { ...m, url };
+      }));
+    },
+    async saveMaterial(input) {
+      const u = me();
+      if (!((u.role === 'curator' && u.curator_status === 'approved') || u.role === 'admin')) throw new Error('forbidden');
+      const id = uuid();
+      const file_path = `idb:materials/${id}`;
+      await idbPut(file_path, input.file);
+      const m = { id, author_id: u.id, author_name: fullName(u) || 'INFOLAKTIKA', title: input.title.trim(), description: input.description.trim(),
+        file_path, file_name: input.file.name, mime: input.file.type, size: input.file.size, created_at: now() };
+      db.materials.unshift(m);
+      for (const s of db.users.filter((x) => x.role === 'student')) notify(s.id, 'Жаңа материал 📎', `${m.title} · ${m.author_name}`, '/app/materials');
+      save();
+    },
+    async deleteMaterial(m) {
+      const u = me();
+      if (m.author_id !== u.id && u.role !== 'admin') throw new Error('forbidden');
+      db.materials = db.materials.filter((x) => x.id !== m.id);
+      if (m.file_path.startsWith('idb:')) await idbDel(m.file_path);
+      save();
+    },
+
+    async curatorOverview() {
+      const u = me();
+      if (u.role !== 'curator') throw new Error('forbidden');
+      const tests = db.tests.filter((t) => t.curator_id === u.id);
+      const ids = new Set(tests.map((t) => t.id));
+      const att = db.attempts.filter((a) => ids.has(a.test_id));
+      return delay({
+        students: db.users.filter((s) => s.role === 'student' && s.curator_id === u.id).length,
+        tests: tests.length, attempts: att.length, materials: db.materials.filter((m) => m.author_id === u.id).length,
+        avg_pct: att.length ? Math.round((att.reduce((s, a) => s + a.score / a.max_score, 0) / att.length) * 100) : null,
+      });
+    },
+    async curatorStudents() {
+      const u = curatorMe();
+      const ids = new Set(db.tests.filter((t) => t.curator_id === u.id).map((t) => t.id));
+      return delay(db.users.filter((s) => s.role === 'student' && s.curator_id === u.id)
+        .sort((a, b) => `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'kk'))
+        .map((s) => {
+          const mine = db.attempts.filter((a) => a.user_id === s.id && ids.has(a.test_id));
+          return { id: s.id, first_name: s.first_name, last_name: s.last_name, username: s.username, stream: s.stream, avatar: s.avatar,
+            xp: s.xp, level: levelFor(s.xp).level, last_active: s.last_active, created_at: s.created_at, must_change: s.must_change,
+            created_by_me: s.created_by === u.id, points: mine.reduce((x, a) => x + a.score, 0), tests_done: mine.length };
+        }));
+    },
+    async curatorCreateStudent(i) {
+      const u = curatorMe();
+      let cred = oneTimeCredentials();
+      while (db.users.some((x) => x.username === cred.username)) cred = oneTimeCredentials();
+      const s = await makeUser(i.first_name.trim(), i.last_name.trim(), cred.username, cred.password, 'student', {
+        stream: i.stream.trim() || null, curator_id: u.id, created_by: u.id, must_change: true });
+      db.users.push(s);
+      notify(u.id, 'Жаңа оқушы 🎓', fullName(s), '/curator/students');
+      save();
+      return cred;
+    },
+    async curatorRemoveStudent(id) {
+      const u = curatorMe();
+      const s = db.users.find((x) => x.id === id && x.role === 'student' && x.curator_id === u.id);
+      if (!s) throw new Error('forbidden');
+      if (s.created_by === u.id) { removeUser(id); save(); return 'deleted'; }
+      s.curator_id = null;
+      save();
+      return 'removed';
+    },
+    async curatorTests() {
+      const u = me();
+      return delay(db.tests.filter((t) => t.curator_id === u.id).sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    },
+    async saveTest(t) {
+      const u = curatorMe();
+      const qs = t.questions;
+      if (!qs.length || qs.length > 50 || qs.some((q) => !q.q.trim() || q.options.length !== 4 || q.options.some((o) => !o.trim()) || !(q.answer >= 0 && q.answer <= 3)))
+        throw new Error('invalid question');
+      const row = { title: t.title.trim(), description: t.description.trim(), questions: qs, published: t.published, updated_at: now() };
+      const existing = t.id ? db.tests.find((x) => x.id === t.id && x.curator_id === u.id) : undefined;
+      if (t.id && !existing) throw new Error('forbidden');
+      if (existing) {
+        const wasPublished = existing.published;
+        Object.assign(existing, row);
+        if (row.published && !wasPublished) notifyTest(existing);
+      } else {
+        const nt: Test = { ...row, id: uuid(), curator_id: u.id, created_at: now() };
+        db.tests.unshift(nt);
+        if (nt.published) notifyTest(nt);
+      }
+      save();
+    },
+    async deleteTest(id) {
+      const u = me();
+      const t = db.tests.find((x) => x.id === id);
+      if (!t || (t.curator_id !== u.id && u.role !== 'admin')) throw new Error('forbidden');
+      db.tests = db.tests.filter((x) => x.id !== id);
+      db.attempts = db.attempts.filter((a) => a.test_id !== id);
+      save();
+    },
+    async testResults(id) {
+      const u = me();
+      const t = db.tests.find((x) => x.id === id);
+      if (!t || (t.curator_id !== u.id && u.role !== 'admin')) throw new Error('forbidden');
+      return delay(db.attempts.filter((a) => a.test_id === id).sort((a, b) => b.score - a.score || a.created_at.localeCompare(b.created_at)).map((a) => {
+        const s = db.users.find((x) => x.id === a.user_id);
+        return { user_id: a.user_id, first_name: s?.first_name ?? '—', last_name: s?.last_name ?? '', avatar: s?.avatar ?? 'robot-1',
+          stream: s?.stream ?? null, score: a.score, max_score: a.max_score, created_at: a.created_at };
+      }));
     },
     async ping() {
       const u = me();
@@ -540,7 +806,7 @@ export async function createDemoApi(): Promise<Api> {
     },
     async adminSetBlocked(id, blocked) {
       admin();
-      const u = db.users.find((x) => x.id === id && x.role === 'student');
+      const u = db.users.find((x) => x.id === id && x.role !== 'admin');
       if (u) u.is_blocked = blocked;
       save();
     },
@@ -554,9 +820,27 @@ export async function createDemoApi(): Promise<Api> {
       admin();
       const u = db.users.find((x) => x.id === id);
       if (u?.role === 'admin') throw new Error('cannot delete admin');
-      db.users = db.users.filter((x) => x.id !== id);
-      for (const k of ['results', 'progress', 'xp', 'earned', 'daily', 'notifications'] as const)
-        (db as any)[k] = (db as any)[k].filter((x: any) => x.user_id !== id);
+      removeUser(id);
+      save();
+    },
+    async adminUsers() {
+      admin();
+      return delay(db.users.filter((u) => u.role !== 'admin').sort((a, b) => b.created_at.localeCompare(a.created_at)).map((u) => {
+        const c = db.users.find((x) => x.id === u.curator_id);
+        return {
+          id: u.id, role: u.role as 'student' | 'curator', first_name: u.first_name, last_name: u.last_name, username: u.username,
+          stream: u.stream, phone: u.phone, curator_status: u.curator_status, curator_id: u.curator_id, curator_name: c ? fullName(c) : null,
+          created_at: u.created_at, xp: u.xp, level: levelFor(u.xp).level, last_active: u.last_active, is_blocked: u.is_blocked,
+          students: db.users.filter((s) => s.curator_id === u.id).length,
+        };
+      }));
+    },
+    async adminSetCuratorStatus(id, status) {
+      admin();
+      const u = db.users.find((x) => x.id === id && x.role === 'curator');
+      if (!u) return;
+      u.curator_status = status;
+      if (status === 'approved') notify(u.id, 'Куратор аккаунты расталды ✅', 'Енді оқушыларды қосып, тест құрастыра аласыз.', '/curator');
       save();
     },
     async adminStats() {

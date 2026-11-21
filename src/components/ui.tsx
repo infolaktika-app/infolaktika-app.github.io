@@ -1,10 +1,26 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { avatarOf, categoryOf, levelProgress } from '../lib/constants';
 import { IX } from './Icons';
 import { Crystal, Robot } from './Art';
 
+export const isPhotoAvatar = (id: string | null | undefined) => !!id && /^(https?:|data:|blob:)/.test(id);
+
 export function Avatar({ id, size = 44, ring = false }: { id: string; size?: number; ring?: boolean }) {
-  const a = avatarOf(id);
+  const [broken, setBroken] = useState(false);
+  if (isPhotoAvatar(id) && !broken) {
+    return (
+      <img
+        src={id}
+        alt=""
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className={`shrink-0 rounded-2xl bg-haze object-cover ${ring ? 'ring-4 ring-white' : ''}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  const a = avatarOf(isPhotoAvatar(id) ? 'robot-1' : id);
   return (
     <span
       className={`grid shrink-0 place-items-center rounded-2xl ${ring ? 'ring-4 ring-white' : ''}`}
@@ -103,7 +119,8 @@ export function Modal({ open, onClose, title, children, wide = false }: { open: 
     };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // Portal to <body>: page wrappers use transform animations, which would trap a fixed overlay below the tab bar.
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-night/40 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
       <div
         role="dialog"
@@ -118,7 +135,8 @@ export function Modal({ open, onClose, title, children, wide = false }: { open: 
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -138,10 +156,10 @@ export function Confirm({ open, title, text, confirmLabel = 'Жою', onConfirm,
 
 export function StatCard({ icon, label, value, sub, tone = '#17404E' }: { icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {
   return (
-    <div className="card card-hover flex items-center gap-4 p-5">
-      <span className="tone-text grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-xl" style={{ background: tone + '18', color: tone }}>{icon}</span>
+    <div className="card card-hover flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
+      <span className="tone-text grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-lg sm:h-12 sm:w-12 sm:text-xl" style={{ background: tone + '18', color: tone }}>{icon}</span>
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-ink/50">{label}</p>
+        <p className="text-[13px] font-semibold leading-tight text-ink/50 [overflow-wrap:anywhere] sm:text-sm">{label}</p>
         <p className="text-2xl font-extrabold leading-tight">{value}</p>
         {sub && <p className="text-xs text-ink/45">{sub}</p>}
       </div>

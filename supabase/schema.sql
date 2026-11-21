@@ -158,6 +158,72 @@ create table if not exists public.notifications (
 create index if not exists notifications_user_idx on public.notifications(user_id, created_at desc);
 
 -- ---------------------------------------------------------------------
+-- 1b. Curators, streams, photo avatars (v2). Safe to re-run on an
+--     existing database: columns/constraints are added if missing.
+-- ---------------------------------------------------------------------
+
+alter table public.profiles add column if not exists stream         text;
+alter table public.profiles add column if not exists phone          text;
+alter table public.profiles add column if not exists curator_status text;
+alter table public.profiles add column if not exists curator_id     uuid references public.profiles(id) on delete set null;
+alter table public.profiles add column if not exists created_by     uuid references public.profiles(id) on delete set null;
+alter table public.profiles add column if not exists must_change    boolean not null default false;
+create index if not exists profiles_curator_idx on public.profiles(curator_id);
+
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('student','curator','admin'));
+alter table public.profiles drop constraint if exists profiles_stream_check;
+alter table public.profiles add constraint profiles_stream_check check (stream is null or stream ~ '^[0-9A-Za-z-]{1,8}$');
+alter table public.profiles drop constraint if exists profiles_phone_check;
+alter table public.profiles add constraint profiles_phone_check check (phone is null or phone ~ '^\+[0-9]{10,15}$');
+alter table public.profiles drop constraint if exists profiles_curator_status_check;
+alter table public.profiles add constraint profiles_curator_status_check check (curator_status is null or curator_status in ('pending','approved'));
+-- avatar is either a built-in avatar id or a photo in the user's own folder of the public "avatars" bucket
+alter table public.profiles drop constraint if exists profiles_avatar_check;
+alter table public.profiles add constraint profiles_avatar_check check (
+  avatar ~ '^[a-z0-9-]{1,20}$'
+  or avatar ~ ('^https://[A-Za-z0-9.:-]+/storage/v1/object/public/avatars/' || id::text || '/[A-Za-z0-9._-]+$'));
+
+-- Curator tests: 4 options per question, one correct. Students read them only through RPCs (answers stay hidden).
+create table if not exists public.tests (
+  id          uuid primary key default gen_random_uuid(),
+  curator_id  uuid not null references public.profiles(id) on delete cascade,
+  title       text not null check (length(trim(title)) between 1 and 200),
+  description text not null default '',
+  questions   jsonb not null default '[]'::jsonb,
+  published   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists tests_curator_idx on public.tests(curator_id);
+
+create table if not exists public.test_attempts (
+  test_id    uuid not null references public.tests(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  score      integer not null,
+  max_score  integer not null,
+  answers    jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  primary key (test_id, user_id)
+);
+create index if not exists test_attempts_user_idx on public.test_attempts(user_id);
+
+-- Materials (checklists etc.) uploaded by curators, visible to the whole platform.
+create table if not exists public.materials (
+  id          uuid primary key default gen_random_uuid(),
+  author_id   uuid not null references public.profiles(id) on delete cascade,
+  author_name text not null default '',
+  title       text not null check (length(trim(title)) between 1 and 200),
+  description text not null default '',
+  file_path   text not null,
+  file_name   text not null default '',
+  mime        text not null default '',
+  size        integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists materials_created_idx on public.materials(created_at desc);
+
+-- ---------------------------------------------------------------------
 -- 2. Helpers
 -- ---------------------------------------------------------------------
 
@@ -174,6 +240,13 @@ $$;
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin' and not is_blocked)
+$$;
+
+-- An approved, active curator.
+create or replace function public.is_curator() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'curator'
+                 and curator_status = 'approved' and not is_blocked)
 $$;
 
 create or replace function public._require_student() returns uuid
@@ -280,20 +353,47 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- 3. New-user trigger (role is ALWAYS student here; admins are promoted
---    with the service key by scripts/create-admin.mjs)
+-- 3. New-user trigger. Sign-up can only create a student or a *pending*
+--    curator (an admin must approve it). Admins are never created here.
 -- ---------------------------------------------------------------------
 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  m    jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  r    text  := case when m->>'role' = 'curator' then 'curator' else 'student' end;
+  ph   text  := nullif(regexp_replace(coalesce(m->>'phone', ''), '[^0-9+]', '', 'g'), '');
+  st   text  := nullif(trim(coalesce(m->>'stream', '')), '');
+  cur  uuid;
+  made uuid;
 begin
-  insert into public.profiles (id, first_name, last_name, username)
+  if r = 'curator' and (ph is null or ph !~ '^\+[0-9]{10,15}$') then
+    raise exception 'phone required for curator';
+  end if;
+  begin cur := nullif(m->>'curator_id', '')::uuid; exception when others then cur := null; end;
+  begin made := nullif(m->>'created_by', '')::uuid; exception when others then made := null; end;
+  if r <> 'student' or (cur is not null and not exists (
+       select 1 from profiles where id = cur and role = 'curator' and curator_status = 'approved' and not is_blocked)) then
+    cur := null;
+  end if;
+  insert into public.profiles (id, first_name, last_name, username, role, stream, phone, curator_status, curator_id, created_by, must_change)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'first_name', ''),
-    coalesce(new.raw_user_meta_data->>'last_name', ''),
-    lower(coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)))
+    coalesce(m->>'first_name', ''),
+    coalesce(m->>'last_name', ''),
+    lower(coalesce(m->>'username', split_part(new.email, '@', 1))),
+    r,
+    case when r = 'student' then st end,
+    case when r = 'curator' then ph end,
+    case when r = 'curator' then 'pending' end,
+    cur,
+    case when cur is not null and made = cur then cur end,
+    r = 'student' and coalesce((m->>'must_change')::boolean, false)
   );
+  if cur is not null then
+    insert into notifications(user_id, title, body, link)
+    values (cur, 'Жаңа оқушы 🎓', trim(coalesce(m->>'first_name', '') || ' ' || coalesce(m->>'last_name', '')), '/curator/students');
+  end if;
   return new;
 end $$;
 
@@ -354,6 +454,9 @@ alter table public.user_achievements enable row level security;
 alter table public.daily_challenges  enable row level security;
 alter table public.daily_completions enable row level security;
 alter table public.notifications     enable row level security;
+alter table public.tests             enable row level security;
+alter table public.test_attempts     enable row level security;
+alter table public.materials         enable row level security;
 
 -- profiles: read own (admins read all); students may only edit name + avatar
 drop policy if exists profiles_select on public.profiles;
@@ -363,7 +466,7 @@ drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles for update to authenticated
   using (id = auth.uid()) with check (id = auth.uid());
 revoke update on public.profiles from authenticated, anon;
-grant update (first_name, last_name, avatar) on public.profiles to authenticated;
+grant update (first_name, last_name, avatar, stream, phone, curator_id) on public.profiles to authenticated;
 revoke insert, delete on public.profiles from authenticated, anon;
 
 -- settings: everyone signed in reads, admin writes
@@ -666,6 +769,348 @@ begin
         from generate_series(1, 5) l));
 end $$;
 
+-- =====================================================================
+-- 7. v2: curators, tests, materials, photo avatars
+-- =====================================================================
+
+-- ---------- profile guard: picking a curator, keeping curator phone ----------
+create or replace function public._profiles_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.curator_id is distinct from old.curator_id and new.curator_id is not null then
+    if new.role <> 'student' then raise exception 'only students can pick a curator'; end if;
+    if not exists (select 1 from profiles where id = new.curator_id and role = 'curator'
+                   and curator_status = 'approved' and not is_blocked) then
+      raise exception 'curator not found';
+    end if;
+    insert into notifications(user_id, title, body, link)
+    values (new.curator_id, 'Жаңа оқушы 🎓', trim(new.first_name || ' ' || new.last_name) || ' сізді куратор етіп таңдады', '/curator/students');
+  end if;
+  if new.role = 'curator' and new.phone is null then raise exception 'phone required for curator'; end if;
+  return new;
+end $$;
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard before update on public.profiles for each row execute function public._profiles_guard();
+
+-- ---------- tests ----------
+create or replace function public._tests_validate()
+returns trigger language plpgsql set search_path = public as $$
+declare q jsonb; n int;
+begin
+  if jsonb_typeof(new.questions) <> 'array' then raise exception 'invalid questions'; end if;
+  n := jsonb_array_length(new.questions);
+  if n < 1 or n > 50 then raise exception 'test must have 1-50 questions'; end if;
+  for q in select * from jsonb_array_elements(new.questions) loop
+    if jsonb_typeof(q->'q') <> 'string' or length(trim(q->>'q')) = 0
+       or jsonb_typeof(q->'options') <> 'array' or jsonb_array_length(q->'options') <> 4
+       or exists (select 1 from jsonb_array_elements(q->'options') o where jsonb_typeof(o) <> 'string' or length(trim(o #>> '{}')) = 0)
+       or jsonb_typeof(q->'answer') <> 'number' or (q->>'answer')::int not between 0 and 3 then
+      raise exception 'invalid question: each question needs text, 4 options and one correct answer';
+    end if;
+  end loop;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists tests_validate on public.tests;
+create trigger tests_validate before insert or update on public.tests for each row execute function public._tests_validate();
+
+create or replace function public._tests_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.published and (tg_op = 'INSERT' or not old.published) then
+    insert into notifications(user_id, title, body, link)
+    select id, 'Жаңа тест! 📝', new.title, '/app/tests/' || new.id from profiles
+    where role = 'student' and curator_id = new.curator_id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists tests_notify on public.tests;
+create trigger tests_notify after insert or update of published on public.tests for each row execute function public._tests_notify();
+
+drop policy if exists tests_select on public.tests;
+create policy tests_select on public.tests for select to authenticated using (curator_id = auth.uid() or public.is_admin());
+drop policy if exists tests_insert on public.tests;
+create policy tests_insert on public.tests for insert to authenticated with check (curator_id = auth.uid() and public.is_curator());
+drop policy if exists tests_update on public.tests;
+create policy tests_update on public.tests for update to authenticated
+  using (curator_id = auth.uid() and public.is_curator()) with check (curator_id = auth.uid() and public.is_curator());
+drop policy if exists tests_delete on public.tests;
+create policy tests_delete on public.tests for delete to authenticated using (curator_id = auth.uid() or public.is_admin());
+
+drop policy if exists test_attempts_select on public.test_attempts;
+create policy test_attempts_select on public.test_attempts for select to authenticated using (
+  user_id = auth.uid() or public.is_admin()
+  or exists (select 1 from public.tests t where t.id = test_id and t.curator_id = auth.uid()));
+
+-- ---------- materials ----------
+create or replace function public._materials_author()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  select trim(first_name || ' ' || last_name) into new.author_name from profiles where id = new.author_id;
+  new.author_name := coalesce(nullif(new.author_name, ''), 'INFOLAKTIKA');
+  new.created_at := now();
+  return new;
+end $$;
+drop trigger if exists materials_author on public.materials;
+create trigger materials_author before insert on public.materials for each row execute function public._materials_author();
+
+create or replace function public._materials_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into notifications(user_id, title, body, link)
+  select id, 'Жаңа материал 📎', new.title || ' · ' || new.author_name, '/app/materials' from profiles where role = 'student';
+  return new;
+end $$;
+drop trigger if exists materials_notify on public.materials;
+create trigger materials_notify after insert on public.materials for each row execute function public._materials_notify();
+
+drop policy if exists materials_select on public.materials;
+create policy materials_select on public.materials for select to authenticated using (true);
+drop policy if exists materials_insert on public.materials;
+create policy materials_insert on public.materials for insert to authenticated
+  with check (author_id = auth.uid() and (public.is_curator() or public.is_admin()));
+drop policy if exists materials_delete on public.materials;
+create policy materials_delete on public.materials for delete to authenticated using (author_id = auth.uid() or public.is_admin());
+
+-- ---------- storage: avatars (public, own folder) + materials (private, curators upload) ----------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 2097152, array['image/jpeg','image/png','image/webp'])
+on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('materials', 'materials', false, 20971520)
+on conflict (id) do nothing;
+
+drop policy if exists "infolaktika avatars read" on storage.objects;
+create policy "infolaktika avatars read" on storage.objects for select to authenticated using (bucket_id = 'avatars');
+drop policy if exists "infolaktika avatars insert" on storage.objects;
+create policy "infolaktika avatars insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "infolaktika avatars update" on storage.objects;
+create policy "infolaktika avatars update" on storage.objects for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "infolaktika avatars delete" on storage.objects;
+create policy "infolaktika avatars delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "infolaktika materials read" on storage.objects;
+create policy "infolaktika materials read" on storage.objects for select to authenticated using (bucket_id = 'materials');
+drop policy if exists "infolaktika materials insert" on storage.objects;
+create policy "infolaktika materials insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'materials' and (storage.foldername(name))[1] = auth.uid()::text
+              and (public.is_curator() or public.is_admin()));
+drop policy if exists "infolaktika materials delete" on storage.objects;
+create policy "infolaktika materials delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'materials' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin()));
+
+-- ---------- RPCs: everyone ----------
+
+-- Approved curators a student can pick.
+create or replace function public.list_curators()
+returns table(id uuid, first_name text, last_name text, avatar text, students bigint)
+language sql stable security definer set search_path = public as $$
+  select c.id, c.first_name, c.last_name, c.avatar,
+         (select count(*) from profiles s where s.curator_id = c.id and s.role = 'student')
+  from profiles c where c.role = 'curator' and c.curator_status = 'approved' and not c.is_blocked
+  order by c.last_name, c.first_name
+$$;
+
+-- Change login (and the hidden auth e-mail behind it). Also finishes the
+-- one-time-credentials setup for students created by a curator.
+create or replace function public.finish_setup(p_username text)
+returns void language plpgsql security definer set search_path = public, auth as $$
+declare uid uuid := auth.uid(); u text := lower(trim(coalesce(p_username, ''))); dom text; mail text;
+begin
+  if uid is null then raise exception 'not authenticated'; end if;
+  if u !~ '^[a-z0-9_.]{3,24}$' then raise exception 'invalid username'; end if;
+  if exists (select 1 from profiles where username = u and id <> uid) then raise exception 'username already exists'; end if;
+  select split_part(email, '@', 2) into dom from auth.users where id = uid;
+  mail := u || '@' || coalesce(nullif(dom, ''), 'infolaktika.app');
+  update auth.users set email = mail where id = uid and email is distinct from mail;
+  if to_regclass('auth.identities') is not null then
+    execute 'update auth.identities set identity_data = identity_data || jsonb_build_object(''email'', $1::text)
+             where user_id = $2 and provider = ''email''' using mail, uid;
+  end if;
+  update profiles set username = u, must_change = false where id = uid;
+end $$;
+
+-- ---------- RPCs: students ----------
+
+create or replace function public.my_tests()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare uid uuid := auth.uid(); cur uuid;
+begin
+  select curator_id into cur from profiles where id = uid;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', t.id, 'title', t.title, 'description', t.description, 'question_count', jsonb_array_length(t.questions),
+      'created_at', t.created_at, 'curator_name', trim(c.first_name || ' ' || c.last_name),
+      'score', a.score, 'max_score', a.max_score, 'done_at', a.created_at) order by t.created_at desc)
+    from tests t join profiles c on c.id = t.curator_id
+    left join test_attempts a on a.test_id = t.id and a.user_id = uid
+    where (t.curator_id = cur and t.published) or a.user_id is not null), '[]'::jsonb);
+end $$;
+
+create or replace function public.get_test(p_id uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare uid uuid := auth.uid(); t tests; a test_attempts; cur uuid; c profiles;
+begin
+  select * into t from tests where id = p_id;
+  if not found then raise exception 'test not found'; end if;
+  select * into a from test_attempts where test_id = p_id and user_id = uid;
+  select curator_id into cur from profiles where id = uid;
+  if a.user_id is null and not (t.published and t.curator_id = cur) and t.curator_id <> uid and not is_admin() then
+    raise exception 'test not found';
+  end if;
+  select * into c from profiles where id = t.curator_id;
+  return jsonb_build_object(
+    'id', t.id, 'title', t.title, 'description', t.description,
+    'curator_name', trim(c.first_name || ' ' || c.last_name),
+    'questions', (select jsonb_agg(jsonb_build_object('q', q->'q', 'options', q->'options') order by i)
+                  from jsonb_array_elements(t.questions) with ordinality x(q, i)),
+    'attempt', case when a.user_id is null then null else jsonb_build_object(
+      'score', a.score, 'max_score', a.max_score, 'answers', a.answers, 'created_at', a.created_at,
+      'correct', (select jsonb_agg((q->>'answer')::int order by i) from jsonb_array_elements(t.questions) with ordinality x(q, i))) end);
+end $$;
+
+create or replace function public.submit_test(p_id uuid, p_answers jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare uid uuid := _require_student(); t tests; cur uuid; n int; s int := 0; i int; earned int; ach jsonb; correct jsonb;
+begin
+  if (select role from profiles where id = uid) <> 'student' then raise exception 'forbidden'; end if;
+  select * into t from tests where id = p_id and published;
+  select curator_id into cur from profiles where id = uid;
+  if not found or t.id is null or t.curator_id is distinct from cur then raise exception 'test not found'; end if;
+  if exists (select 1 from test_attempts where test_id = p_id and user_id = uid) then raise exception 'test already answered'; end if;
+  if jsonb_typeof(p_answers) <> 'array' then raise exception 'invalid answers'; end if;
+  n := jsonb_array_length(t.questions);
+  for i in 0 .. n - 1 loop
+    if jsonb_typeof(p_answers->i) = 'number' and (p_answers->>i)::int = (t.questions->i->>'answer')::int then s := s + 1; end if;
+  end loop;
+  insert into test_attempts(test_id, user_id, score, max_score, answers)
+  values (p_id, uid, s, n, coalesce((select jsonb_agg(case when jsonb_typeof(p_answers->k) = 'number' then p_answers->k else 'null'::jsonb end order by k)
+                                     from generate_series(0, n - 1) k), '[]'::jsonb));
+  earned := s * 10;
+  perform _award(uid, earned, 'test', t.title);
+  perform _touch(uid);
+  ach := _check_achievements(uid);
+  select jsonb_agg((q->>'answer')::int order by k) into correct from jsonb_array_elements(t.questions) with ordinality x(q, k);
+  return jsonb_build_object('score', s, 'max_score', n, 'xp', earned, 'bonus', 0, 'correct', correct, 'achievements', ach);
+end $$;
+
+-- Test-points rating inside one curator group (the caller's curator, or the caller if they are a curator).
+create or replace function public.group_rating()
+returns table(rank bigint, id uuid, first_name text, last_name text, avatar text, stream text, points bigint, tests_done bigint)
+language plpgsql stable security definer set search_path = public as $$
+declare uid uuid := auth.uid(); me profiles; cur uuid;
+begin
+  select * into me from profiles where profiles.id = uid;
+  cur := case when me.role = 'curator' then me.id else me.curator_id end;
+  if cur is null then return; end if;
+  return query
+  select rank() over (order by coalesce(x.pts, 0) desc), p.id, p.first_name, p.last_name, p.avatar, p.stream,
+         coalesce(x.pts, 0)::bigint, coalesce(x.cnt, 0)::bigint
+  from profiles p
+  left join (select a.user_id, sum(a.score) pts, count(*) cnt from test_attempts a join tests t on t.id = a.test_id
+             where t.curator_id = cur group by a.user_id) x on x.user_id = p.id
+  where p.role = 'student' and p.curator_id = cur and not p.is_blocked
+  order by coalesce(x.pts, 0) desc, p.last_name, p.first_name;
+end $$;
+
+-- ---------- RPCs: curators ----------
+
+create or replace function public.curator_students()
+returns table(id uuid, first_name text, last_name text, username text, stream text, avatar text, xp integer, level integer,
+              last_active date, created_at timestamptz, must_change boolean, created_by_me boolean, points bigint, tests_done bigint)
+language plpgsql stable security definer set search_path = public as $$
+declare uid uuid := auth.uid();
+begin
+  if not is_curator() then raise exception 'forbidden'; end if;
+  return query
+  select p.id, p.first_name, p.last_name, p.username, p.stream, p.avatar, p.xp, level_for(p.xp), p.last_active, p.created_at,
+         p.must_change, coalesce(p.created_by = uid, false),
+         (select coalesce(sum(a.score), 0) from test_attempts a join tests t on t.id = a.test_id where a.user_id = p.id and t.curator_id = uid)::bigint,
+         (select count(*) from test_attempts a join tests t on t.id = a.test_id where a.user_id = p.id and t.curator_id = uid)
+  from profiles p where p.role = 'student' and p.curator_id = uid
+  order by p.last_name, p.first_name;
+end $$;
+
+-- Accounts the curator created are deleted; students who joined by themselves are only removed from the group.
+create or replace function public.curator_remove_student(p_uid uuid)
+returns text language plpgsql security definer set search_path = public, auth as $$
+declare uid uuid := auth.uid(); p profiles;
+begin
+  if not is_curator() then raise exception 'forbidden'; end if;
+  select * into p from profiles where id = p_uid and role = 'student' and curator_id = uid;
+  if not found then raise exception 'forbidden'; end if;
+  if p.created_by = uid then
+    delete from auth.users where id = p_uid;
+    return 'deleted';
+  end if;
+  update profiles set curator_id = null where id = p_uid;
+  return 'removed';
+end $$;
+
+create or replace function public.curator_test_results(p_test uuid)
+returns table(user_id uuid, first_name text, last_name text, avatar text, stream text, score integer, max_score integer, created_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from tests where id = p_test and (curator_id = auth.uid() or is_admin())) then raise exception 'forbidden'; end if;
+  return query
+  select a.user_id, p.first_name, p.last_name, p.avatar, p.stream, a.score, a.max_score, a.created_at
+  from test_attempts a join profiles p on p.id = a.user_id where a.test_id = p_test
+  order by a.score desc, a.created_at;
+end $$;
+
+create or replace function public.curator_overview()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare uid uuid := auth.uid();
+begin
+  if not exists (select 1 from profiles where id = uid and role = 'curator') then raise exception 'forbidden'; end if;
+  return jsonb_build_object(
+    'students', (select count(*) from profiles where role = 'student' and curator_id = uid),
+    'tests', (select count(*) from tests where curator_id = uid),
+    'attempts', (select count(*) from test_attempts a join tests t on t.id = a.test_id where t.curator_id = uid),
+    'materials', (select count(*) from materials where author_id = uid),
+    'avg_pct', (select round(avg(a.score::numeric / nullif(a.max_score, 0)) * 100) from test_attempts a join tests t on t.id = a.test_id where t.curator_id = uid));
+end $$;
+
+-- ---------- RPCs: admin ----------
+
+create or replace function public.admin_users()
+returns table(id uuid, role text, first_name text, last_name text, username text, stream text, phone text, curator_status text,
+              curator_id uuid, curator_name text, created_at timestamptz, xp integer, level integer, last_active date,
+              is_blocked boolean, students bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  return query
+  select p.id, p.role, p.first_name, p.last_name, p.username, p.stream, p.phone, p.curator_status, p.curator_id,
+         trim(c.first_name || ' ' || c.last_name), p.created_at, p.xp, level_for(p.xp), p.last_active, p.is_blocked,
+         (select count(*) from profiles s where s.curator_id = p.id)
+  from profiles p left join profiles c on c.id = p.curator_id
+  where p.role <> 'admin' order by p.created_at desc;
+end $$;
+
+create or replace function public.admin_set_curator_status(p_uid uuid, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  if p_status not in ('pending','approved') then raise exception 'invalid status'; end if;
+  update profiles set curator_status = p_status where id = p_uid and role = 'curator';
+  if p_status = 'approved' then
+    insert into notifications(user_id, title, body, link)
+    values (p_uid, 'Куратор аккаунты расталды ✅', 'Енді оқушыларды қосып, тест құрастыра аласыз.', '/curator');
+  end if;
+end $$;
+
+-- Blocking now works for curators too (never for admins).
+create or replace function public.admin_set_blocked(p_uid uuid, p_blocked boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  update profiles set is_blocked = p_blocked where id = p_uid and role <> 'admin';
+end $$;
+
 -- Internal helpers must not be callable from the API.
 revoke execute on function public._award(uuid, integer, text, text) from public, anon, authenticated;
 revoke execute on function public._touch(uuid) from public, anon, authenticated;
@@ -675,3 +1120,61 @@ revoke execute on function public._check_missions(uuid) from public, anon, authe
 revoke execute on function public._missions(uuid) from public, anon, authenticated;
 revoke execute on function public._require_student() from public, anon, authenticated;
 grant execute on function public.username_available(text) to anon, authenticated;
+
+-- ---------------------------------------------------------------
+-- INFOLAKTIKA: Data API рұқсаттары.
+-- Жаңа Supabase жобаларында public кестелері anon/authenticated рөлдеріне
+-- автоматты түрде ашылмайды ("permission denied for table ..." қатесі).
+-- Бұл файл қажетті рұқсаттарды нақты береді. Қатарларды бәрібір RLS қорғайды.
+-- Қайта іске қосуға болады.
+
+grant usage on schema public to anon, authenticated;
+
+-- Оқу: әр кестеде RLS саясаты кім нені көретінін шектейді.
+grant select on all tables in schema public to authenticated;
+
+-- Әкімші контенті (RLS тек is_admin() үшін рұқсат береді).
+grant insert, update, delete on public.comics, public.books, public.games, public.daily_challenges, public.tests to authenticated;
+grant insert, delete on public.materials to authenticated;
+grant update on public.settings to authenticated;
+
+-- Профиль мен хабарландыруда тек белгілі бағандар өзгертіледі.
+revoke update on public.profiles from authenticated, anon;
+grant update (first_name, last_name, avatar, stream, phone, curator_id) on public.profiles to authenticated;
+revoke update on public.notifications from authenticated;
+grant update (read) on public.notifications to authenticated;
+
+grant usage on all sequences in schema public to authenticated;
+
+-- RPC функциялары.
+grant execute on function public.username_available(text) to anon, authenticated;
+grant execute on function public.level_for(integer) to authenticated;
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.ping() to authenticated;
+grant execute on function public.complete_game to authenticated;
+grant execute on function public.save_progress to authenticated;
+grant execute on function public.get_daily_challenge to authenticated;
+grant execute on function public.submit_daily to authenticated;
+grant execute on function public.get_my_stats to authenticated;
+grant execute on function public.get_leaderboard to authenticated;
+grant execute on function public.admin_students to authenticated;
+grant execute on function public.admin_student_detail to authenticated;
+grant execute on function public.admin_set_blocked to authenticated;
+grant execute on function public.admin_adjust_xp to authenticated;
+grant execute on function public.admin_delete_student to authenticated;
+grant execute on function public.admin_stats to authenticated;
+grant execute on function public.is_curator() to authenticated;
+grant execute on function public.list_curators() to authenticated;
+grant execute on function public.finish_setup(text) to authenticated;
+grant execute on function public.my_tests() to authenticated;
+grant execute on function public.get_test(uuid) to authenticated;
+grant execute on function public.submit_test(uuid, jsonb) to authenticated;
+grant execute on function public.group_rating() to authenticated;
+grant execute on function public.curator_students() to authenticated;
+grant execute on function public.curator_remove_student(uuid) to authenticated;
+grant execute on function public.curator_test_results(uuid) to authenticated;
+grant execute on function public.curator_overview() to authenticated;
+grant execute on function public.admin_users() to authenticated;
+grant execute on function public.admin_set_curator_status(uuid, text) to authenticated;
+
+notify pgrst, 'reload schema';

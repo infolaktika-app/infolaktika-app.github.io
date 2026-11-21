@@ -237,7 +237,7 @@ export function Logo({ light = false, className = '' }: { compact?: boolean; lig
     <span
       role="img"
       aria-label="INFOLAKTIKA"
-      className={`inline-block h-8 shrink-0 align-middle ${light ? 'text-white' : 'text-brand dark:text-ink'} ${className}`}
+      className={`inline-block h-9 shrink-0 align-middle ${light ? 'text-white' : 'text-brand dark:text-ink'} ${className}`}
       style={{ aspectRatio: '2205 / 583', backgroundColor: 'currentColor', WebkitMask: `${url} center / contain no-repeat`, mask: `${url} center / contain no-repeat` }}
     />
   );

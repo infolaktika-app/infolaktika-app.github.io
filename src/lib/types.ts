@@ -1,4 +1,4 @@
-export type Role = 'student' | 'admin';
+export type Role = 'student' | 'curator' | 'admin';
 
 export interface Profile {
   id: string;
@@ -13,6 +13,12 @@ export interface Profile {
   last_active: string | null;
   is_blocked: boolean;
   created_at: string;
+  stream: string | null;
+  phone: string | null;
+  curator_status: 'pending' | 'approved' | null;
+  curator_id: string | null;
+  created_by: string | null;
+  must_change: boolean;
 }
 
 export interface Comic {
@@ -202,4 +208,128 @@ export interface SignUpInput {
   last_name: string;
   username: string;
   password: string;
+  role: 'student' | 'curator';
+  stream?: string;
+  phone?: string;
 }
+
+export type ProfilePatch = Partial<Pick<Profile, 'first_name' | 'last_name' | 'avatar' | 'stream' | 'phone' | 'curator_id'>>;
+
+export interface CuratorBrief { id: string; first_name: string; last_name: string; avatar: string; students: number }
+
+export interface TestQuestion { q: string; options: string[]; answer: number }
+
+export interface Test {
+  id: string;
+  curator_id: string;
+  title: string;
+  description: string;
+  questions: TestQuestion[];
+  published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MyTestRow {
+  id: string;
+  title: string;
+  description: string;
+  question_count: number;
+  created_at: string;
+  curator_name: string;
+  score: number | null;
+  max_score: number | null;
+  done_at: string | null;
+}
+
+export interface TestAttempt { score: number; max_score: number; answers: (number | null)[]; correct: number[]; created_at: string }
+
+export interface TestForStudent {
+  id: string;
+  title: string;
+  description: string;
+  curator_name: string;
+  questions: { q: string; options: string[] }[];
+  attempt: TestAttempt | null;
+}
+
+export interface TestSubmitResult extends RewardResult { score: number; max_score: number; correct: number[] }
+
+export interface GroupRatingRow {
+  rank: number;
+  id: string;
+  first_name: string;
+  last_name: string;
+  avatar: string;
+  stream: string | null;
+  points: number;
+  tests_done: number;
+}
+
+export interface CuratorStudentRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  username: string;
+  stream: string | null;
+  avatar: string;
+  xp: number;
+  level: number;
+  last_active: string | null;
+  created_at: string;
+  must_change: boolean;
+  created_by_me: boolean;
+  points: number;
+  tests_done: number;
+}
+
+export interface TestResultRow {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  avatar: string;
+  stream: string | null;
+  score: number;
+  max_score: number;
+  created_at: string;
+}
+
+export interface CuratorOverview { students: number; tests: number; attempts: number; materials: number; avg_pct: number | null }
+
+export interface Material {
+  id: string;
+  author_id: string;
+  author_name: string;
+  title: string;
+  description: string;
+  file_path: string;
+  file_name: string;
+  mime: string;
+  size: number;
+  created_at: string;
+  url: string | null;
+}
+
+export interface MaterialInput { title: string; description: string; file: File }
+
+export interface AdminUserRow {
+  id: string;
+  role: 'student' | 'curator';
+  first_name: string;
+  last_name: string;
+  username: string;
+  stream: string | null;
+  phone: string | null;
+  curator_status: 'pending' | 'approved' | null;
+  curator_id: string | null;
+  curator_name: string | null;
+  created_at: string;
+  xp: number;
+  level: number;
+  last_active: string | null;
+  is_blocked: boolean;
+  students: number;
+}
+
+export interface NewStudentInput { first_name: string; last_name: string; stream: string }
+export interface NewStudentCredentials { username: string; password: string }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { Logo } from '../components/Art';
-import { IBook, IChart, IComic, IGame, IGrid, ILogout, IMenu, ISettings, IUsers, IX } from '../components/Icons';
+import { IBook, IChart, IComic, IFile, IGame, IGrid, ILogout, IMenu, ISettings, IUsers, IX } from '../components/Icons';
 import { Avatar } from '../components/ui';
 import { IS_DEMO } from '../lib/api';
 import { useAuth, useSession } from '../lib/auth';
@@ -12,7 +12,9 @@ import ContentManager from './ContentManager';
 import GamesManager from './GamesManager';
 import SettingsPage from './SettingsPage';
 import StatsPage from './StatsPage';
-import { StudentDetailPage, StudentsPage } from './Students';
+import { StudentDetailPage } from './Students';
+import UsersPage from './Users';
+import MaterialsPage from '../pages/Materials';
 import { MadeBy } from '../components/MadeBy';
 
 const NAV = [
@@ -20,7 +22,8 @@ const NAV = [
   { to: '/admin/comics', label: 'Комикстерді басқару', icon: IComic },
   { to: '/admin/books', label: 'Кітаптарды басқару', icon: IBook },
   { to: '/admin/games', label: 'Ойындарды басқару', icon: IGame },
-  { to: '/admin/students', label: 'Оқушылар', icon: IUsers },
+  { to: '/admin/users', label: 'Пайдаланушылар', icon: IUsers },
+  { to: '/admin/materials', label: 'Материалдар', icon: IFile },
   { to: '/admin/stats', label: 'Статистика', icon: IChart },
   { to: '/admin/settings', label: 'Settings', icon: ISettings },
 ];
@@ -29,14 +32,14 @@ function Side({ onNav }: { onNav?: () => void }) {
   const { profile } = useSession();
   const { signOut } = useAuth();
   const { path } = useLocation();
-  const active = (to: string) => (to === '/admin' ? path === '/admin' : path.startsWith(to));
+  const active = (to: string) => (to === '/admin' ? path === '/admin' : path.startsWith(to) || (to === '/admin/users' && path.startsWith('/admin/students')));
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 pl-3">
         <Link to="/admin" onClick={onNav}><Logo /></Link>
       </div>
       <span className="chip mx-3 mt-3 self-start bg-night text-white">🛡️ Әкімші панелі</span>
-      <nav className="mt-6 flex-1 space-y-1.5">
+      <nav className="scrollbar-none mt-6 flex-1 space-y-1 overflow-y-auto">
         {NAV.map(({ to, label, icon: I }) => (
           <Link key={to} to={to} onClick={onNav} className={`nav-item ${active(to) ? 'active' : ''}`}><I className="h-[21px] w-[21px]" />{label}</Link>
         ))}
@@ -64,7 +67,8 @@ export default function AdminApp() {
   else if (path === '/admin/comics') page = <ContentManager kind="comic" />;
   else if (path === '/admin/books') page = <ContentManager kind="book" />;
   else if (path === '/admin/games') page = <GamesManager />;
-  else if (path === '/admin/students') page = <StudentsPage />;
+  else if (path === '/admin/users' || path === '/admin/students') page = <UsersPage />;
+  else if (path === '/admin/materials') page = <MaterialsPage />;
   else if ((m = match('/admin/students/:id', path))) page = <StudentDetailPage id={m.id} />;
   else if (path === '/admin/stats') page = <StatsPage />;
   else if (path === '/admin/settings') page = <SettingsPage />;
@@ -74,8 +78,8 @@ export default function AdminApp() {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[284px] p-5 lg:block">
         <div className="h-full rounded-[32px] bg-gradient-to-b from-card/70 to-haze/70 p-4 ring-1 ring-inset ring-card/80"><Side /></div>
       </aside>
-      <header className="sticky top-0 z-30 flex items-center justify-between bg-mist/85 px-4 py-3 backdrop-blur lg:hidden">
-        <Logo />
+      <header className="sticky top-0 z-30 flex items-center justify-between bg-mist/85 px-4 py-2.5 backdrop-blur lg:hidden">
+        <Link to="/admin"><Logo /></Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <button className="icon-btn" onClick={() => setOpen(true)} aria-label="Мәзір"><IMenu /></button>

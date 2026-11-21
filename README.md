@@ -31,17 +31,34 @@ If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not set, the app runs in
    SUPABASE_SERVICE_ROLE_KEY=... ADMIN_USERNAME=admin ADMIN_PASSWORD='strong-password' npm run create-admin
    ```
    The service role key is used only by this script and never ends up in the browser bundle. Running the script again resets the password.
-6. Run `npm run dev`, or build with `npm run build` and deploy `dist/`. SPA rewrites are already included for Vercel (`vercel.json`) and Netlify (`public/_redirects`). For a host without rewrites, set `VITE_HASH_ROUTER=1`.
+6. Run `npm run dev`, or build with `npm run build` and deploy `dist/`. To publish on **GitHub Pages**, see the section below. SPA rewrites are already included for Vercel (`vercel.json`) and Netlify (`public/_redirects`). For a host without rewrites, set `VITE_HASH_ROUTER=1`.
+
+## Publishing on GitHub Pages (github.io)
+
+The repository includes `.github/workflows/deploy-pages.yml`:
+1. Push the project to GitHub (branch `main`).
+2. Go to repository **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
+3. Open the **Actions** tab and wait for "Deploy to GitHub Pages" to turn green. The site appears at `https://<username>.github.io/<repo>/`.
+4. Optional: to use a real database, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Settings → Secrets and variables → Actions → New repository secret**, then re-run the workflow. Without them the site runs in demo mode.
+
+On Pages, links look like `.../infolaktika/#/app/comics`, because GitHub Pages cannot serve app routes otherwise.
+
+## Updating an existing database (v2: curators, tests, materials)
+
+`supabase/schema.sql` is safe to run again. On a project that already ran the first version, open *SQL Editor*, paste the **whole new `schema.sql`** and click **Run**. It adds the new columns, tables, buckets (`avatars`, `materials`), policies and functions without touching existing data. `seed.sql` does not need to run again.
 
 ## Roles and security
 
-| | Student | Admin |
-|---|---|---|
-| Sign up | `/register` (role is always `student`; the DB trigger ignores any role sent from the client) | Only via `scripts/create-admin.mjs` |
-| Sign in | `/login` | `/admin/login` (accounts without admin rights are signed out) |
-| Content | Read published content only | Full create, edit and delete; can see drafts |
-| Profile | Can change only first name, last name and avatar (column-level GRANT) | Students: block, delete, adjust XP |
-| XP / progress | Only through the RPCs `complete_game`, `save_progress`, `submit_daily` | Statistics through `admin_*` RPCs |
+| | Student | Curator | Admin |
+|---|---|---|---|
+| Sign up | `/register` → "Оқушы", stream (поток) required | `/register` → "Куратор", phone number required; account stays **pending** until an admin approves it | Only via `scripts/create-admin.mjs` (or the Supabase dashboard) |
+| Sign in | `/login` (one-time credentials from a curator lead to `/setup`, where the student picks their own login + password) | `/login` → `/curator` | `/admin/login` |
+| Content | Comics, books, games, materials, tests of *their* curator | No games/comics; Tests (4-option questions), Materials (upload checklists, published to everyone as "Авторы: …"), rating of own students | Everything; Users page (students + curators: approve, block, delete), Materials |
+| Students | Picks a curator in Profile | Sees own students; adds students (one-time login/password); deleting removes accounts the curator created, self-joined students are only removed from the group | Block, delete, adjust XP |
+| Profile | Name, avatar or own photo (`avatars` bucket, own folder only), stream, curator (column-level GRANT + trigger checks) | Name, photo, phone | — |
+| XP / progress | Only through RPCs (`complete_game`, `save_progress`, `submit_daily`, `submit_test`) | Test results via `curator_*` RPCs | `admin_*` RPCs |
+
+The DB trigger never lets sign-up create an admin; a curator is always created as `pending`. Test answers are never sent to students before they submit (`get_test` strips them).
 
 `/admin/*` routes are also blocked in the UI, but the real protection is RLS and the `is_admin()` check inside the database.
 
