@@ -107,21 +107,21 @@ export function SkeletonGrid({ n = 6, h = 'h-72' }: { n?: number; h?: string }) 
   );
 }
 
-export function Modal({ open, onClose, title, children, wide = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+export function Modal({ open, onClose, title, children, wide = false, locked = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean; locked?: boolean }) {
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && !locked && onClose();
     window.addEventListener('keydown', k);
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('keydown', k);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open, onClose, locked]);
   if (!open) return null;
   // Portal to <body>: page wrappers use transform animations, which would trap a fixed overlay below the tab bar.
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-night/40 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-night/40 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={locked ? undefined : onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -131,7 +131,7 @@ export function Modal({ open, onClose, title, children, wide = false }: { open: 
       >
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 className="text-xl font-extrabold">{title}</h2>
-          <button className="icon-btn !h-9 !w-9" onClick={onClose} aria-label="Жабу"><IX /></button>
+          {!locked && <button className="icon-btn !h-9 !w-9" onClick={onClose} aria-label="Жабу"><IX /></button>}
         </div>
         {children}
       </div>

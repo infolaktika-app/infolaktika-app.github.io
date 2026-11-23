@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Crystal } from './Art';
-import { Spinner } from './ui';
+import { Modal, Spinner } from './ui';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../lib/toast';
@@ -115,5 +115,50 @@ export function ComicReviewBox({ comicId }: { comicId: string }) {
         <button className="btn btn-primary" onClick={submit} disabled={busy || !rating}>{busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} Бағаны жіберу</button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Opens right after a comic is finished and stays until the student picks 1–5 crystals.
+ * The comment is optional.
+ */
+export function ComicRatingGate({ comicId, title, open, onRated }: { comicId: string; title: string; open: boolean; onRated: () => void }) {
+  const { api } = useSession();
+  const toast = useToast();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!rating) return;
+    setBusy(true);
+    try {
+      await api.rateComic(comicId, rating, comment);
+      toast.success('Рахмет! Бағаң жіберілді', 'Пікіріңді әкімші көреді');
+      onRated();
+    } catch (e) {
+      toast.error(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={() => {}} locked title="Комикс ұнады ма?">
+      <div className="space-y-4">
+        <p className="text-ink/60">«{title}» комиксін оқып шықтың! Жалғастыру үшін оны 1-ден 5-ке дейін кристалмен бағала.</p>
+        <div className="flex flex-col items-center gap-2 rounded-3xl bg-mist px-3 py-5">
+          <CrystalRating value={rating} onChange={setRating} size={40} />
+          <span className="h-6 font-extrabold text-brand">{rating ? `${rating} / 5 · ${RATING_LABELS[rating]}` : 'Кристалды бас'}</span>
+        </div>
+        <label className="block">
+          <span className="label">Пікірің (міндетті емес)</span>
+          <textarea className="input min-h-24" value={comment} onChange={(e) => setComment(e.target.value.slice(0, 1000))} placeholder="Не ұнады? Не жетпеді? Жазбасаң да болады." maxLength={1000} />
+        </label>
+        <button className="btn btn-primary w-full py-3.5" onClick={submit} disabled={busy || !rating}>
+          {busy && <Spinner className="h-4 w-4 border-white/40 border-t-white" />} {rating ? 'Бағаны жіберу' : 'Алдымен бағала'}
+        </button>
+      </div>
+    </Modal>
   );
 }

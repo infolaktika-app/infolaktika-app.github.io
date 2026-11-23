@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Robot } from '../components/Art';
 import { IChevL, IChevR, IExpand, IShrink, IZoomIn, IZoomOut } from '../components/Icons';
 import { CategoryChip, Empty, ProgressBar, Spinner } from '../components/ui';
-import { ComicReviewBox } from '../components/ComicReview';
+import { ComicRatingGate, ComicReviewBox } from '../components/ComicReview';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { closePdf, openPdf, renderPage, type PDFDoc } from '../lib/pdf';
@@ -25,6 +25,9 @@ export default function Reader({ kind, id }: { kind: 'comic' | 'book'; id: strin
   const [done, setDone] = useState(false);
   const [width, setWidth] = useState(800);
   const [pageInput, setPageInput] = useState('1');
+  const [askRating, setAskRating] = useState(false);
+  const [reviewKey, setReviewKey] = useState(0);
+  const asked = useRef(false);
 
   const stage = useRef<HTMLDivElement>(null);
   const shell = useRef<HTMLDivElement>(null);
@@ -118,6 +121,17 @@ export default function Reader({ kind, id }: { kind: 'comic' | 'book'; id: strin
     if (doc) persist(page, doc.numPages);
   }, [page, doc]);
   useEffect(() => () => window.clearTimeout(saveTimer.current), []);
+
+  // A finished comic must be rated (1–5 crystals) before the student moves on; ask once per visit.
+  useEffect(() => {
+    if (kind !== 'comic' || !done || !doc || page < doc.numPages || asked.current) return;
+    asked.current = true;
+    api.myComicReview(id).then((r) => {
+      if (r) return;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      setAskRating(true);
+    }).catch(() => {});
+  }, [kind, done, doc, page, id]);
 
   const total = doc?.numPages ?? item?.pages ?? 1;
   const go = useCallback((p: number) => setPage((cur) => Math.min(total, Math.max(1, Number.isFinite(p) ? p : cur))), [total]);
@@ -257,7 +271,15 @@ export default function Reader({ kind, id }: { kind: 'comic' | 'book'; id: strin
           <Link to="/app/games" className="btn btn-primary">Ойынға өту</Link>
         </div>
       )}
-      {kind === 'comic' && done && !fs && doc && <ComicReviewBox comicId={id} />}
+      {kind === 'comic' && done && !fs && doc && <ComicReviewBox key={reviewKey} comicId={id} />}
+      {kind === 'comic' && (
+        <ComicRatingGate
+          comicId={id}
+          title={item?.title ?? ''}
+          open={askRating}
+          onRated={() => { setAskRating(false); setReviewKey((k) => k + 1); }}
+        />
+      )}
     </div>
   );
 }
