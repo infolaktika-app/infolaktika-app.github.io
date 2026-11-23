@@ -1,5 +1,8 @@
-import * as pdfjs from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// The "legacy" build ships polyfills for the brand-new JS APIs the modern build relies on
+// (Map.prototype.getOrInsert, Promise.try, Math.sumPrecise...). Without them PDFs never finish
+// loading on phones (iOS Safari, older Android Chrome) — only fresh desktop browsers worked.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -16,7 +19,13 @@ export function closePdf(doc: PDFDoc | null | undefined) {
 }
 
 export function openPdf(data: ArrayBuffer): Promise<PDFDoc> {
-  return pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
+  const task = pdfjs.getDocument({ data: new Uint8Array(data) });
+  // Never leave the reader spinning forever: give up with a clear message after 60 s.
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => { task.destroy().catch(() => {}); reject(new Error('PDF ашылмады. Бетті жаңартып, қайта көріңіз.')); }, 60000);
+  });
+  return Promise.race([task.promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** Render one page into a canvas at the given CSS width (crisp on retina). */
