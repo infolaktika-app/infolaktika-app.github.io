@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Robot } from '../components/Art';
 import { IChevL, IChevR, IExpand, IShrink, IZoomIn, IZoomOut } from '../components/Icons';
 import { CategoryChip, Empty, ProgressBar, Spinner } from '../components/ui';
+import { ComicReviewBox } from '../components/ComicReview';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { closePdf, openPdf, renderPage, type PDFDoc } from '../lib/pdf';
@@ -256,6 +257,7 @@ export default function Reader({ kind, id }: { kind: 'comic' | 'book'; id: strin
           <Link to="/app/games" className="btn btn-primary">Ойынға өту</Link>
         </div>
       )}
+      {kind === 'comic' && done && !fs && doc && <ComicReviewBox comicId={id} />}
     </div>
   );
 }

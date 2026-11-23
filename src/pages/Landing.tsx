@@ -1,4 +1,5 @@
 import { Books, CodeBadge, Crystal, Cube, Gamepad, Laptop, Logo, Planet, Rocket, Trophy } from '../components/Art';
+import { MobileHeader } from '../components/MobileHeader';
 import { RobotBuddy } from '../components/RobotBuddy';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { IArrowR } from '../components/Icons';
@@ -10,7 +11,8 @@ export default function Landing() {
   return (
     <div className="relative min-h-screen overflow-hidden">
       <div className="dot-grid pointer-events-none absolute inset-x-0 top-0 h-[640px] opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-      <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
+      <MobileHeader className="!bg-transparent !border-transparent !backdrop-blur-none !static relative z-10 sm:hidden" home="/" left={<ThemeToggle />} right={<Link to="/login" className="btn btn-soft btn-sm">Кіру</Link>} />
+      <header className="relative z-10 mx-auto hidden max-w-7xl items-center justify-between px-5 py-5 sm:flex sm:px-8">
         <Logo />
         <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle />

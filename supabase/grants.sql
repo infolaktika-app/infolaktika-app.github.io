@@ -13,6 +13,12 @@ grant select on all tables in schema public to authenticated;
 grant insert, update, delete on public.comics, public.books, public.games, public.daily_challenges, public.tests to authenticated;
 grant insert, delete on public.materials to authenticated;
 revoke update on public.materials from authenticated;
+grant delete on public.comic_reviews to authenticated;
+revoke insert, update on public.comic_reviews from authenticated;
+revoke insert on public.suggestions from authenticated;
+revoke update on public.suggestions from authenticated;
+grant update (is_read) on public.suggestions to authenticated;
+grant delete on public.suggestions to authenticated;
 grant update on public.settings to authenticated;
 
 -- Профиль мен хабарландыруда тек белгілі бағандар өзгертіледі.
@@ -46,5 +52,9 @@ grant execute on function public.submit_test(uuid, jsonb) to authenticated;
 grant execute on function public.test_rating() to authenticated;
 grant execute on function public.admin_test_results(uuid) to authenticated;
 grant execute on function public.admin_users() to authenticated;
+grant execute on function public.rate_comic(uuid, int, text) to authenticated;
+grant execute on function public.send_suggestion(text, uuid, text) to authenticated;
+grant execute on function public.admin_comic_ratings() to authenticated;
+grant execute on function public.admin_comic_reviews(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

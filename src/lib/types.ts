@@ -296,3 +296,31 @@ export interface AdminUserRow {
   tests_done: number;
   test_points: number;
 }
+
+export interface ComicReview { rating: number; comment: string; updated_at: string }
+export interface ComicRatingRow { comic_id: string; avg_rating: number; reviews: number; comments: number }
+export interface ComicReviewRow {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  avatar: string;
+  stream: string | null;
+  rating: number;
+  comment: string;
+  updated_at: string;
+}
+
+export type SuggestionTopic = 'comic' | 'material' | 'platform';
+export interface SuggestionInput { topic: SuggestionTopic; target_id: string | null; body: string }
+export interface Suggestion {
+  id: string;
+  user_id: string | null;
+  author_name: string;
+  stream: string | null;
+  topic: SuggestionTopic;
+  target_id: string | null;
+  target_title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}

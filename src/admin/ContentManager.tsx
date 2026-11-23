@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { IEdit, IEye, IPlus, ISearch, ITrash, IUpload } from '../components/Icons';
+import { CrystalRating } from '../components/ComicReview';
+import { ComicReviewsModal } from './ComicReviews';
 import { PdfPreview } from '../components/PdfPreview';
 import { CategoryChip, Confirm, Cover, Empty, Modal, PageLoader, Spinner } from '../components/ui';
+import type { ComicRatingRow } from '../lib/types';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { CATEGORIES, formatDate } from '../lib/constants';
@@ -20,11 +23,14 @@ export default function ContentManager({ kind }: { kind: 'comic' | 'book' }) {
   const { search, path } = useLocation();
   const isComic = kind === 'comic';
   const { data, loading, reload } = useAsync(async () => {
-    const [items, stats] = await Promise.all([isComic ? api.listComics() : api.listBooks(), api.adminStats()]);
-    return { items: items as Item[], stats };
+    const [items, stats, ratings] = await Promise.all([
+      isComic ? api.listComics() : api.listBooks(), api.adminStats(), isComic ? api.adminComicRatings() : Promise.resolve([] as ComicRatingRow[]),
+    ]);
+    return { items: items as Item[], stats, ratings: new Map(ratings.map((r) => [r.comic_id, r])) };
   }, [kind]);
   const [editing, setEditing] = useState<Item | 'new' | null>(null);
   const [preview, setPreview] = useState<Item | null>(null);
+  const [reviews, setReviews] = useState<Item | null>(null);
   const [del, setDel] = useState<Item | null>(null);
   const [busyDel, setBusyDel] = useState(false);
   const [q, setQ] = useState('');
@@ -62,7 +68,11 @@ export default function ContentManager({ kind }: { kind: 'comic' | 'book' }) {
     } catch (e) { toast.error(friendlyError(e)); } finally { setBusyDel(false); }
   };
 
-  if (loading) return <PageLoader />;
+  const allRatings = [...(data?.ratings.values() ?? [])];
+  const totalReviews = allRatings.reduce((s, r) => s + r.reviews, 0);
+  const overall = totalReviews ? allRatings.reduce((s, r) => s + r.avg_rating * r.reviews, 0) / totalReviews : 0;
+
+  if (loading && !data) return <PageLoader />;
   return (
     <div>
       <AdminHeader
@@ -70,6 +80,17 @@ export default function ContentManager({ kind }: { kind: 'comic' | 'book' }) {
         sub={`${data?.items.length ?? 0} ${isComic ? 'комикс' : 'кітап'} · жарияланғандары оқушыларға бірден көрінеді`}
         action={<button className="btn btn-primary" onClick={() => setEditing('new')}><IPlus /> {isComic ? 'Жаңа комикс' : 'Жаңа кітап'}</button>}
       />
+      {isComic && (
+        <div className="card mb-5 flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:gap-6">
+          <div>
+            <p className="text-sm font-semibold text-ink/50">Комикстердің ортақ бағасы</p>
+            <p className="mt-0.5 text-3xl font-extrabold">{totalReviews ? overall.toFixed(1) : '—'}<span className="text-lg text-ink/40"> / 5</span></p>
+          </div>
+          <CrystalRating value={overall} size={30} />
+          <p className="text-sm text-ink/55 sm:ml-auto">{totalReviews} баға · {allRatings.reduce((s, r) => s + r.comments, 0)} пікір</p>
+        </div>
+      )}
+
       <div className="mb-5 flex flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">
           <ISearch className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink/35" />
@@ -86,23 +107,35 @@ export default function ContentManager({ kind }: { kind: 'comic' | 'book' }) {
       ) : (
         <div className="card overflow-hidden">
           <div className="hidden grid-cols-[64px_1fr_190px_80px_90px_120px_150px] items-center gap-4 border-b border-haze px-5 py-3 text-xs font-bold uppercase tracking-wide text-ink/40 lg:grid">
-            <span /><span>Атауы</span><span>Санат</span><span>Бет</span><span>Оқырман</span><span>Күйі</span><span className="text-right">Әрекеттер</span>
+            <span /><span>Атауы</span><span>Санат</span><span>{isComic ? 'Баға' : 'Бет'}</span><span>Оқырман</span><span>Күйі</span><span className="text-right">Әрекеттер</span>
           </div>
           {list.map((it) => (
-            <div key={it.id} className="grid grid-cols-[56px_1fr_auto] items-center gap-4 border-b border-haze px-4 py-3 last:border-0 lg:grid-cols-[64px_1fr_190px_80px_90px_120px_150px] lg:px-5">
+            <div key={it.id} className="grid grid-cols-[56px_1fr_auto] items-center gap-4 border-b border-haze px-4 py-3 last:border-0 lg:grid-cols-[64px_1fr_190px_96px_90px_120px_190px] lg:px-5">
               <Cover src={api.coverSrc(it.cover_url)} title={it.title} category={it.category} className="aspect-[3/4] w-14 rounded-xl lg:w-16" />
               <div className="min-w-0">
                 <p className="truncate font-extrabold">{it.title}</p>
                 <p className="truncate text-sm text-ink/50">{it.author ? `${it.author} · ` : ''}{formatDate(it.created_at)}</p>
-                <div className="mt-1 lg:hidden"><CategoryChip slug={it.category} small /></div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 lg:hidden">
+                  <CategoryChip slug={it.category} small />
+                  {isComic && data?.ratings.get(it.id) && <span className="chip bg-haze text-brand">◆ {data.ratings.get(it.id)!.avg_rating.toFixed(1)} · {data.ratings.get(it.id)!.reviews}</span>}
+                </div>
               </div>
-              <span className="hidden lg:block"><CategoryChip slug={it.category} small /></span>
-              <span className="hidden text-sm font-bold lg:block">{it.pages ?? '—'}</span>
+              <span className="hidden min-w-0 overflow-hidden lg:block [&>*]:max-w-full [&>*]:truncate"><CategoryChip slug={it.category} small /></span>
+              {isComic ? (
+                <button className="hidden text-left text-sm font-bold hover:text-brand lg:block" onClick={() => setReviews(it)} title="Пікірлерді қарау">
+                  {data?.ratings.get(it.id) ? <>◆ {data.ratings.get(it.id)!.avg_rating.toFixed(1)} <span className="font-semibold text-ink/45">({data.ratings.get(it.id)!.reviews})</span></> : <span className="text-ink/35">—</span>}
+                </button>
+              ) : <span className="hidden text-sm font-bold lg:block">{it.pages ?? '—'}</span>}
               <span className="hidden text-sm font-bold lg:block">{readers[it.title] ?? 0}</span>
               <button onClick={() => togglePublish(it)} className={`hidden justify-self-start rounded-full px-3 py-1 text-xs font-bold transition lg:block ${it.published ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-haze text-ink/55 hover:bg-lavender/30'}`} title="Күйін ауыстыру">
                 {it.published ? '● Жарияланды' : '○ Жоба'}
               </button>
               <div className="flex justify-end gap-1.5">
+                {isComic && (
+                  <button className="icon-btn !h-9 !w-9" title="Бағалар мен пікірлер" aria-label="Бағалар мен пікірлер" onClick={() => setReviews(it)}>
+                    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
+                  </button>
+                )}
                 <button className="icon-btn !h-9 !w-9" title="Алдын ала қарау" aria-label="Алдын ала қарау" onClick={() => setPreview(it)}><IEye className="h-4 w-4" /></button>
                 <button className="icon-btn !h-9 !w-9" title="Өңдеу" aria-label="Өңдеу" onClick={() => setEditing(it)}><IEdit className="h-4 w-4" /></button>
                 <button className="icon-btn !h-9 !w-9 hover:!text-rose-500" title="Жою" aria-label="Жою" onClick={() => setDel(it)}><ITrash className="h-4 w-4" /></button>
@@ -113,6 +146,7 @@ export default function ContentManager({ kind }: { kind: 'comic' | 'book' }) {
       )}
 
       {editing && <ContentForm kind={kind} item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {isComic && <ComicReviewsModal comic={reviews} onClose={() => setReviews(null)} onChanged={reload} />}
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.title ?? ''} wide>
         {preview && <PdfPreview load={() => api.loadPdf(preview.pdf_path)} />}
       </Modal>

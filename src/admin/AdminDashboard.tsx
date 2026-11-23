@@ -10,11 +10,15 @@ import { BarList, ColumnChart } from './Charts';
 export default function AdminDashboard() {
   const { api, profile } = useSession();
   const { data, loading } = useAsync(async () => {
-    const [stats, students, comics, books] = await Promise.all([api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks()]);
-    return { stats, students, comics, books };
+    const [stats, students, comics, books, ratings, suggestions] = await Promise.all([
+      api.adminStats(), api.adminStudents(), api.listComics(), api.listBooks(), api.adminComicRatings(), api.adminSuggestions(),
+    ]);
+    const n = ratings.reduce((x, r) => x + r.reviews, 0);
+    const avg = n ? ratings.reduce((x, r) => x + r.avg_rating * r.reviews, 0) / n : null;
+    return { stats, students, comics, books, rating: { avg, n }, newSuggestions: suggestions.filter((x) => !x.is_read).length };
   }, []);
   if (loading || !data) return <PageLoader />;
-  const { stats: s, students, comics, books } = data;
+  const { stats: s, students, comics, books, rating, newSuggestions } = data;
   const recent = [...comics.map((c) => ({ ...c, kind: 'Комикс' })), ...books.map((b) => ({ ...b, kind: 'Кітап' }))]
     .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
 
@@ -40,11 +44,13 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard icon={<IUsers />} label="Оқушылар" value={s.students} sub={`Бүгін белсенді: ${s.active_today}`} />
         <StatCard icon={<IComic />} label="Комикстер" value={s.comics} tone="#63B1CB" />
         <StatCard icon={<IBook />} label="Кітаптар" value={s.books} tone="#2FA1C8" />
         <StatCard icon={<IGame />} label="Аяқталған ойындар" value={s.games_completed} sub={`${s.games} ойын бар`} tone="#2683A3" />
+        <Link to="/admin/comics" className="block"><StatCard icon="◆" label="Комикстердің орташа бағасы" value={rating.avg == null ? '—' : `${rating.avg.toFixed(1)} / 5`} sub={`${rating.n} баға`} tone="#2A9FB3" /></Link>
+        <Link to="/admin/suggestions" className="block"><StatCard icon="✉" label="Жаңа ұсыныстар" value={newSuggestions} sub="Оқушылардан" tone="#5E9A45" /></Link>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">

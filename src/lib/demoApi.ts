@@ -11,7 +11,7 @@ import { staticUrl } from './api';
 import { levelFor, todayKZ } from './constants';
 import type {
   Achievement, Book, Comic, ContentInput, EarnedAchievement, Game, GameResult, ItemType,
-  Material, Notification, Profile, ReadingProgress, RewardResult, Role, Settings, Test,
+  Material, Notification, Profile, ReadingProgress, RewardResult, Role, Settings, Suggestion, Test,
 } from './types';
 
 interface DemoUser extends Profile { salt: string; hash: string }
@@ -32,6 +32,8 @@ interface DB {
   tests: Test[];
   attempts: { test_id: string; user_id: string; score: number; max_score: number; answers: (number | null)[]; created_at: string }[];
   materials: Omit<Material, 'url'>[];
+  reviews: { comic_id: string; user_id: string; rating: number; comment: string; updated_at: string }[];
+  suggestions: Suggestion[];
 }
 
 const KEY = 'infolaktika-demo-v5';
@@ -115,7 +117,7 @@ async function freshDb(): Promise<DB> {
     comics: seed.comics.map((c, i) => ({ ...c, published: true, created_at: created(seed.comics.length - 1 - i) })),
     books: seed.books.map((b, i) => ({ ...b, published: true, created_at: created(10 - i) })),
     games, results: [], progress: [], xp: [], earned: [], daily: [], notifications: [],
-    settings: { ...seed.settings }, tests: [], attempts: [], materials: [],
+    settings: { ...seed.settings }, tests: [], attempts: [], materials: [], reviews: [], suggestions: [],
   };
   const adminUser = await makeUser('Әкімші', '', 'admin', 'admin123', 'admin');
   db.users.push(adminUser);
@@ -159,6 +161,22 @@ async function freshDb(): Promise<DB> {
     description: 'Тақырыпты өткен соң әр пунктті белгілеп шық.', file_path: 'sample/checklist-python.pdf',
     file_name: 'checklist-python.pdf', mime: 'application/pdf', size: 57550, created_at: created(1),
   });
+  const students = db.users.filter((u) => u.role === 'student');
+  const firstComic = db.comics.find((c) => c.published);
+  if (firstComic) {
+    [[5, 'Өте қызық! Келесі бөлімін күтемін.'], [4, ''], [5, 'Суреттері керемет']].forEach(([rating, comment], i) => {
+      const u = students[i];
+      if (!u) return;
+      if (!db.progress.some((p) => p.user_id === u.id && p.item_id === firstComic.id)) {
+        db.progress.push({ user_id: u.id, item_type: 'comic', item_id: firstComic.id, last_page: firstComic.pages ?? 1, total_pages: firstComic.pages ?? 1, completed: true, completed_at: created(2), updated_at: created(2) });
+      }
+      db.reviews.push({ comic_id: firstComic.id, user_id: u.id, rating: rating as number, comment: comment as string, updated_at: created(1.5 - i * 0.2) });
+    });
+  }
+  if (students[1]) {
+    db.suggestions.push({ id: uuid(), user_id: students[1].id, author_name: `${students[1].first_name} ${students[1].last_name}`, stream: students[1].stream,
+      topic: 'platform', target_id: null, target_title: '', body: 'Ойындарға таймерсіз режим қосса жақсы болар еді.', is_read: false, created_at: created(0.5) });
+  }
   return db;
 }
 
@@ -167,6 +185,8 @@ export async function createDemoApi(): Promise<Api> {
   try {
     const raw = localStorage.getItem(KEY);
     db = raw ? JSON.parse(raw) : await freshDb();
+    db.reviews ??= [];
+    db.suggestions ??= [];
   } catch {
     db = await freshDb();
   }
@@ -195,6 +215,8 @@ export async function createDemoApi(): Promise<Api> {
     for (const k of ['results', 'progress', 'xp', 'earned', 'daily', 'notifications', 'attempts'] as const)
       (db as any)[k] = (db as any)[k].filter((x: any) => x.user_id !== id);
     db.tests.forEach((t) => { if (t.author_id === id) t.author_id = null; });
+    db.reviews = db.reviews.filter((r) => r.user_id !== id);
+    db.suggestions.forEach((x) => { if (x.user_id === id) x.user_id = null; });
   }
   const notify = (user_id: string, title: string, body: string, link: string | null) =>
     db.notifications.push({ id: uuid(), user_id, title, body, link, read: false, created_at: now() });
@@ -396,6 +418,36 @@ export async function createDemoApi(): Promise<Api> {
           points: mine.reduce((s, a) => s + a.score, 0), tests_done: mine.length };
       }).sort((a, b) => b.points - a.points || a.last_name.localeCompare(b.last_name, 'kk'));
       return delay(rows.map((r) => ({ ...r, rank: rows.filter((y) => y.points > r.points).length + 1 })));
+    },
+
+    async myComicReview(comicId) {
+      const u = me();
+      const r = db.reviews.find((x) => x.comic_id === comicId && x.user_id === u.id);
+      return delay(r ? { rating: r.rating, comment: r.comment, updated_at: r.updated_at } : null);
+    },
+    async rateComic(comicId, rating, comment) {
+      const u = me();
+      if (u.role !== 'student') throw new Error('forbidden');
+      if (!(rating >= 1 && rating <= 5)) throw new Error('invalid rating');
+      if (!db.comics.some((c) => c.id === comicId && c.published)) throw new Error('comic not found');
+      if (!db.progress.some((p) => p.user_id === u.id && p.item_type === 'comic' && p.item_id === comicId && p.completed)) throw new Error('finish the comic first');
+      const c = comment.trim().slice(0, 1000);
+      const r = db.reviews.find((x) => x.comic_id === comicId && x.user_id === u.id);
+      if (r) Object.assign(r, { rating, comment: c, updated_at: now() });
+      else db.reviews.push({ comic_id: comicId, user_id: u.id, rating, comment: c, updated_at: now() });
+      save();
+    },
+    async sendSuggestion(i) {
+      const u = me();
+      if (u.role !== 'student') throw new Error('forbidden');
+      const body = i.body.trim();
+      if (body.length < 3) throw new Error('suggestion too short');
+      if (db.suggestions.filter((x) => x.user_id === u.id && Date.now() - Date.parse(x.created_at) < 864e5).length >= 10) throw new Error('too many suggestions');
+      const target = i.topic === 'platform' ? null : i.target_id;
+      const title = !target ? '' : i.topic === 'comic' ? db.comics.find((c) => c.id === target)?.title ?? '' : db.materials.find((m) => m.id === target)?.title ?? '';
+      db.suggestions.unshift({ id: uuid(), user_id: u.id, author_name: fullName(u), stream: u.stream, topic: i.topic, target_id: target,
+        target_title: title, body: body.slice(0, 2000), is_read: false, created_at: now() });
+      save();
     },
 
     async listMaterials() {
@@ -634,6 +686,7 @@ export async function createDemoApi(): Promise<Api> {
     async deleteComic(c) {
       admin();
       db.comics = db.comics.filter((x) => x.id !== c.id);
+      db.reviews = db.reviews.filter((r) => r.comic_id !== c.id);
       db.progress = db.progress.filter((p) => !(p.item_type === 'comic' && p.item_id === c.id));
       if (c.pdf_path.startsWith('idb:')) await idbDel(c.pdf_path);
       save();
@@ -714,6 +767,44 @@ export async function createDemoApi(): Promise<Api> {
       const u = db.users.find((x) => x.id === id);
       if (u?.role === 'admin') throw new Error('cannot delete admin');
       removeUser(id);
+      save();
+    },
+    async adminComicRatings() {
+      admin();
+      const by = new Map<string, { sum: number; n: number; c: number }>();
+      for (const r of db.reviews) {
+        const x = by.get(r.comic_id) ?? { sum: 0, n: 0, c: 0 };
+        x.sum += r.rating; x.n += 1; if (r.comment) x.c += 1;
+        by.set(r.comic_id, x);
+      }
+      return delay([...by].map(([comic_id, x]) => ({ comic_id, avg_rating: Math.round((x.sum / x.n) * 100) / 100, reviews: x.n, comments: x.c })));
+    },
+    async adminComicReviews(comicId) {
+      admin();
+      return delay(db.reviews.filter((r) => r.comic_id === comicId).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map((r) => {
+        const u = db.users.find((x) => x.id === r.user_id);
+        return { user_id: r.user_id, first_name: u?.first_name ?? '—', last_name: u?.last_name ?? '', avatar: u?.avatar ?? 'robot-1',
+          stream: u?.stream ?? null, rating: r.rating, comment: r.comment, updated_at: r.updated_at };
+      }));
+    },
+    async adminDeleteComicReview(comicId, userId) {
+      admin();
+      db.reviews = db.reviews.filter((r) => !(r.comic_id === comicId && r.user_id === userId));
+      save();
+    },
+    async adminSuggestions() {
+      admin();
+      return delay([...db.suggestions].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    },
+    async adminMarkSuggestion(id, read) {
+      admin();
+      const x = db.suggestions.find((s) => s.id === id);
+      if (x) x.is_read = read;
+      save();
+    },
+    async adminDeleteSuggestion(id) {
+      admin();
+      db.suggestions = db.suggestions.filter((s) => s.id !== id);
       save();
     },
     async adminUsers() {

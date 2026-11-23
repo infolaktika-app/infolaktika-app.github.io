@@ -979,6 +979,107 @@ begin
   update profiles set is_blocked = p_blocked where id = p_uid and role <> 'admin';
 end $$;
 
+-- =====================================================================
+-- 8. v4: comic ratings (1–5 crystals + comment) and student suggestions
+-- =====================================================================
+
+create table if not exists public.comic_reviews (
+  comic_id   uuid not null references public.comics(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  rating     smallint not null check (rating between 1 and 5),
+  comment    text not null default '' check (length(comment) <= 1000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (comic_id, user_id)
+);
+create index if not exists comic_reviews_comic_idx on public.comic_reviews(comic_id, updated_at desc);
+alter table public.comic_reviews enable row level security;
+
+drop policy if exists comic_reviews_select on public.comic_reviews;
+create policy comic_reviews_select on public.comic_reviews for select to authenticated using (user_id = auth.uid() or public.is_admin());
+drop policy if exists comic_reviews_delete on public.comic_reviews;
+create policy comic_reviews_delete on public.comic_reviews for delete to authenticated using (public.is_admin());
+
+create table if not exists public.suggestions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid references public.profiles(id) on delete set null,
+  author_name  text not null default '',
+  stream       text,
+  topic        text not null check (topic in ('comic','material','platform')),
+  target_id    uuid,
+  target_title text not null default '',
+  body         text not null check (length(trim(body)) between 3 and 2000),
+  is_read      boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists suggestions_created_idx on public.suggestions(created_at desc);
+alter table public.suggestions enable row level security;
+
+drop policy if exists suggestions_select on public.suggestions;
+create policy suggestions_select on public.suggestions for select to authenticated using (user_id = auth.uid() or public.is_admin());
+drop policy if exists suggestions_update on public.suggestions;
+create policy suggestions_update on public.suggestions for update to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists suggestions_delete on public.suggestions;
+create policy suggestions_delete on public.suggestions for delete to authenticated using (public.is_admin());
+
+-- A student rates a comic they have finished reading (one review per comic, can be changed).
+create or replace function public.rate_comic(p_comic uuid, p_rating int, p_comment text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare uid uuid := _require_student(); c text := left(trim(coalesce(p_comment, '')), 1000);
+begin
+  if (select role from profiles where id = uid) <> 'student' then raise exception 'forbidden'; end if;
+  if p_rating is null or p_rating not between 1 and 5 then raise exception 'invalid rating'; end if;
+  if not exists (select 1 from comics where id = p_comic and published) then raise exception 'comic not found'; end if;
+  if not exists (select 1 from reading_progress where user_id = uid and item_type = 'comic' and item_id = p_comic and completed) then
+    raise exception 'finish the comic first';
+  end if;
+  insert into comic_reviews(comic_id, user_id, rating, comment)
+  values (p_comic, uid, p_rating, c)
+  on conflict (comic_id, user_id) do update set rating = excluded.rating, comment = excluded.comment, updated_at = now();
+  perform _touch(uid);
+  return jsonb_build_object('rating', p_rating, 'comment', c);
+end $$;
+
+create or replace function public.send_suggestion(p_topic text, p_target uuid, p_body text)
+returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := _require_student(); me profiles; tt text := ''; b text := trim(coalesce(p_body, ''));
+begin
+  if p_topic not in ('comic','material','platform') then raise exception 'invalid topic'; end if;
+  if length(b) < 3 then raise exception 'suggestion too short'; end if;
+  if (select count(*) from suggestions where user_id = uid and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'too many suggestions';
+  end if;
+  select * into me from profiles where id = uid;
+  if p_topic = 'comic' and p_target is not null then select title into tt from comics where id = p_target;
+  elsif p_topic = 'material' and p_target is not null then select title into tt from materials where id = p_target;
+  end if;
+  insert into suggestions(user_id, author_name, stream, topic, target_id, target_title, body)
+  values (uid, trim(me.first_name || ' ' || me.last_name), me.stream, p_topic,
+          case when p_topic = 'platform' then null else p_target end, coalesce(tt, ''), left(b, 2000));
+end $$;
+
+-- Average rating per comic (admin).
+create or replace function public.admin_comic_ratings()
+returns table(comic_id uuid, avg_rating numeric, reviews bigint, comments bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  return query
+  select r.comic_id, round(avg(r.rating)::numeric, 2), count(*), count(*) filter (where r.comment <> '')
+  from comic_reviews r group by r.comic_id;
+end $$;
+
+create or replace function public.admin_comic_reviews(p_comic uuid)
+returns table(user_id uuid, first_name text, last_name text, avatar text, stream text, rating smallint, comment text, updated_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  return query
+  select r.user_id, p.first_name, p.last_name, p.avatar, p.stream, r.rating, r.comment, r.updated_at
+  from comic_reviews r join profiles p on p.id = r.user_id
+  where r.comic_id = p_comic order by r.updated_at desc;
+end $$;
+
 -- v2.1: "XP" is called "кристалл" in the UI.
 update public.achievements set title = '500 кристалл', description = '500 кристалл жина', icon = '💎' where code = 'xp_500';
 
@@ -1008,6 +1109,12 @@ grant select on all tables in schema public to authenticated;
 grant insert, update, delete on public.comics, public.books, public.games, public.daily_challenges, public.tests to authenticated;
 grant insert, delete on public.materials to authenticated;
 revoke update on public.materials from authenticated;
+grant delete on public.comic_reviews to authenticated;
+revoke insert, update on public.comic_reviews from authenticated;
+revoke insert on public.suggestions from authenticated;
+revoke update on public.suggestions from authenticated;
+grant update (is_read) on public.suggestions to authenticated;
+grant delete on public.suggestions to authenticated;
 grant update on public.settings to authenticated;
 
 -- Профиль мен хабарландыруда тек белгілі бағандар өзгертіледі.
@@ -1041,5 +1148,9 @@ grant execute on function public.submit_test(uuid, jsonb) to authenticated;
 grant execute on function public.test_rating() to authenticated;
 grant execute on function public.admin_test_results(uuid) to authenticated;
 grant execute on function public.admin_users() to authenticated;
+grant execute on function public.rate_comic(uuid, int, text) to authenticated;
+grant execute on function public.send_suggestion(text, uuid, text) to authenticated;
+grant execute on function public.admin_comic_ratings() to authenticated;
+grant execute on function public.admin_comic_reviews(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

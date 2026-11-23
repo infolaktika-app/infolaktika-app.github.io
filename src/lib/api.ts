@@ -2,7 +2,8 @@ import type {
   Achievement, AdminStats, Book, Comic, ContentInput, DailyChallenge, Game, GameResult, ItemType,
   LeaderRow, MyStats, Notification, Profile, ReadingProgress, RewardResult, Settings, SignUpInput,
   StudentDetail, StudentRow, ProfilePatch, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
-  Test, TestResultRow, Material, MaterialInput, AdminUserRow,
+  Test, TestResultRow, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
+  Suggestion, SuggestionInput,
 } from './types';
 
 export interface DailyResult extends RewardResult {
@@ -34,6 +35,13 @@ export interface Api {
   getTest(id: string): Promise<TestForStudent>;
   submitTest(id: string, answers: (number | null)[]): Promise<TestSubmitResult>;
   testRating(): Promise<GroupRatingRow[]>;
+
+  // comic ratings (students rate a comic they finished)
+  myComicReview(comicId: string): Promise<ComicReview | null>;
+  rateComic(comicId: string, rating: number, comment: string): Promise<void>;
+
+  // suggestions (students → admin)
+  sendSuggestion(input: SuggestionInput): Promise<void>;
 
   // materials (everyone reads; admin uploads)
   listMaterials(): Promise<Material[]>;
@@ -83,6 +91,12 @@ export interface Api {
   adminDeleteStudent(id: string): Promise<void>;
   adminStats(): Promise<AdminStats>;
   adminUsers(): Promise<AdminUserRow[]>;
+  adminComicRatings(): Promise<ComicRatingRow[]>;
+  adminComicReviews(comicId: string): Promise<ComicReviewRow[]>;
+  adminDeleteComicReview(comicId: string, userId: string): Promise<void>;
+  adminSuggestions(): Promise<Suggestion[]>;
+  adminMarkSuggestion(id: string, read: boolean): Promise<void>;
+  adminDeleteSuggestion(id: string): Promise<void>;
   saveSettings(s: Settings): Promise<void>;
 }
 
@@ -108,6 +122,10 @@ export function friendlyError(e: unknown): string {
   if (/test already answered/i.test(msg)) return 'Бұл сауалнама бұрын тапсырылған.';
   if (/test not found/i.test(msg)) return 'Сауалнама табылмады.';
   if (/invalid question|questions/i.test(msg)) return 'Әр сұрақта мәтін, 4 жауап нұсқасы және бір дұрыс жауап болуы керек.';
+  if (/finish the comic first/i.test(msg)) return 'Бағалау үшін комиксті соңына дейін оқы.';
+  if (/invalid rating/i.test(msg)) return 'Бағаны 1-ден 5-ке дейін таңда.';
+  if (/suggestion too short/i.test(msg)) return 'Ұсынысты толығырақ жаз (кемінде 3 таңба).';
+  if (/too many suggestions/i.test(msg)) return 'Бүгінге ұсыныс лимиті бітті (10). Ертең қайта жаз.';
   if (/rate limit|too many/i.test(msg)) return 'Тым көп әрекет. Бірнеше минуттан кейін қайталаңыз.';
   if (/exceeded the maximum allowed size|Payload too large|too large/i.test(msg)) return 'Файл тым үлкен (ең көбі 20 МБ).';
   if (/mime type|not supported/i.test(msg)) return 'Бұл файл түріне рұқсат жоқ.';

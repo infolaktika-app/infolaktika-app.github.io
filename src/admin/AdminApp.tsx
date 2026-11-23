@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MobileHeader } from '../components/MobileHeader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { Logo } from '../components/Art';
 import { IBook, IChart, IClipboard, IComic, IFile, IGame, IGrid, ILogout, IMenu, ISettings, IUsers, IX } from '../components/Icons';
@@ -16,6 +17,11 @@ import { StudentDetailPage } from './Students';
 import UsersPage from './Users';
 import MaterialsPage from '../pages/Materials';
 import TestsManager, { TestEditor, TestResults } from './TestsManager';
+import SuggestionsPage from './Suggestions';
+
+const IChat = ({ className }: { className?: string }) => (
+  <svg aria-hidden="true" className={className ?? 'h-5 w-5'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M8.5 11h7M8.5 14.5h4" /></svg>
+);
 import { MadeBy } from '../components/MadeBy';
 
 const NAV = [
@@ -26,6 +32,7 @@ const NAV = [
   { to: '/admin/users', label: 'Оқушылар', icon: IUsers },
   { to: '/admin/tests', label: 'Сауалнамалар', icon: IClipboard },
   { to: '/admin/materials', label: 'Материалдар', icon: IFile },
+  { to: '/admin/suggestions', label: 'Ұсыныстар', icon: IChat },
   { to: '/admin/stats', label: 'Статистика', icon: IChart },
   { to: '/admin/settings', label: 'Settings', icon: ISettings },
 ];
@@ -72,6 +79,7 @@ export default function AdminApp() {
   else if (path === '/admin/users' || path === '/admin/students') page = <UsersPage />;
   else if (path === '/admin/materials') page = <MaterialsPage />;
   else if (path === '/admin/tests') page = <TestsManager />;
+  else if (path === '/admin/suggestions') page = <SuggestionsPage />;
   else if (path === '/admin/tests/new') page = <TestEditor />;
   else if ((m = match('/admin/tests/:id/edit', path))) page = <TestEditor id={m.id} />;
   else if ((m = match('/admin/tests/:id', path))) page = <TestResults id={m.id} />;
@@ -84,13 +92,7 @@ export default function AdminApp() {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[284px] p-5 lg:block">
         <div className="h-full rounded-[32px] bg-gradient-to-b from-card/70 to-haze/70 p-4 ring-1 ring-inset ring-card/80"><Side /></div>
       </aside>
-      <header className="sticky top-0 z-30 flex items-center justify-between bg-mist/85 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link to="/admin"><Logo /></Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <button className="icon-btn" onClick={() => setOpen(true)} aria-label="Мәзір"><IMenu /></button>
-        </div>
-      </header>
+      <MobileHeader className="lg:hidden" home="/admin" left={<ThemeToggle />} right={<button className="icon-btn" onClick={() => setOpen(true)} aria-label="Мәзір"><IMenu /></button>} />
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-night/40" onClick={() => setOpen(false)} />

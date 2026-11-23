@@ -10,6 +10,7 @@ import {
 } from './Icons';
 import { Avatar } from './ui';
 import { MadeBy } from './MadeBy';
+import { MobileHeader } from './MobileHeader';
 
 type NavItem = { to: string; label: string; short?: string; icon: (p: { className?: string }) => ReactNode; tab?: boolean };
 
@@ -85,7 +86,7 @@ function BellButton({ placement }: { placement: 'side' | 'top' }) {
   useEffect(() => setShow(false), [path]);
   return (
     <div className={placement === 'side' ? 'relative' : ''}>
-      <button className="icon-btn relative !h-9 !w-9" onClick={() => { setShow((s) => !s); notes.markRead(); }} aria-label="Хабарламалар">
+      <button className={`icon-btn relative ${placement === 'side' ? '!h-9 !w-9' : ''}`} onClick={() => { setShow((s) => !s); notes.markRead(); }} aria-label="Хабарламалар">
         <IBell className="h-[18px] w-[18px]" />
         {notes.unread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{notes.unread}</span>}
       </button>
@@ -186,13 +187,7 @@ export function StudentLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* mobile header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between bg-mist/85 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link to={home}><Logo /></Link>
-        <div className="flex items-center gap-2">
-          <BellButton placement="top" />
-          <ThemeToggle />
-        </div>
-      </header>
+      <MobileHeader className="lg:hidden" home={home} left={<ThemeToggle />} right={<BellButton placement="top" />} />
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-night/40 backdrop-blur-sm" onClick={() => setOpen(false)} />

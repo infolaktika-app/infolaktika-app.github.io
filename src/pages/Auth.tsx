@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { MobileHeader } from '../components/MobileHeader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { Books, CodeBadge, Crystal, Laptop, Logo, Robot } from '../components/Art';
 import { IShield } from '../components/Icons';
@@ -13,7 +14,15 @@ function Shell({ children, side, admin = false }: { children: ReactNode; side: R
   return (
     <div className="grid min-h-screen lg:grid-cols-[1fr_1.05fr]">
       <div className="flex flex-col px-5 py-6 sm:px-10">
-        <div className="flex items-center justify-between">
+        <div className="-mx-5 -mt-6 sm:hidden">
+          <MobileHeader
+            className="!static !border-transparent !bg-transparent !backdrop-blur-none"
+            home="/"
+            left={<Link to="/" className="icon-btn" aria-label="Басты бетке"><svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg></Link>}
+            right={<ThemeToggle />}
+          />
+        </div>
+        <div className="hidden items-center justify-between sm:flex">
           <Link to="/"><Logo /></Link>
           <ThemeToggle />
         </div>

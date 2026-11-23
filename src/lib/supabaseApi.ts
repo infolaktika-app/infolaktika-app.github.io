@@ -143,6 +143,18 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     submitTest: (id, answers) => rpc('submit_test', { p_id: id, p_answers: answers }),
     testRating: () => rpc('test_rating'),
 
+    async myComicReview(comicId) {
+      const { data, error } = await sb.from('comic_reviews').select('rating, comment, updated_at').eq('comic_id', comicId).eq('user_id', await uid()).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async rateComic(comicId, rating, comment) {
+      await rpc('rate_comic', { p_comic: comicId, p_rating: rating, p_comment: comment });
+    },
+    async sendSuggestion(i) {
+      await rpc('send_suggestion', { p_topic: i.topic, p_target: i.topic === 'platform' ? null : i.target_id, p_body: i.body });
+    },
+
     async listMaterials() {
       const rows = check(await sb.from('materials').select('*').order('created_at', { ascending: false })) as Material[];
       if (rows.length) {
@@ -289,6 +301,23 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     adminDeleteStudent: (id) => rpc('admin_delete_student', { p_uid: id }),
     adminStats: () => rpc('admin_stats'),
     adminUsers: () => rpc('admin_users'),
+    async adminComicRatings() {
+      const rows = (await rpc('admin_comic_ratings')) as any[];
+      return rows.map((r) => ({ ...r, avg_rating: Number(r.avg_rating), reviews: Number(r.reviews), comments: Number(r.comments) }));
+    },
+    adminComicReviews: (comicId) => rpc('admin_comic_reviews', { p_comic: comicId }),
+    async adminDeleteComicReview(comicId, userId) {
+      check(await sb.from('comic_reviews').delete().eq('comic_id', comicId).eq('user_id', userId));
+    },
+    async adminSuggestions() {
+      return check(await sb.from('suggestions').select('*').order('created_at', { ascending: false }).limit(500));
+    },
+    async adminMarkSuggestion(id, read) {
+      check(await sb.from('suggestions').update({ is_read: read }).eq('id', id));
+    },
+    async adminDeleteSuggestion(id) {
+      check(await sb.from('suggestions').delete().eq('id', id));
+    },
     async saveSettings(s) {
       check(await sb.from('settings').update({ ...s, updated_at: new Date().toISOString() }).eq('id', 1));
     },

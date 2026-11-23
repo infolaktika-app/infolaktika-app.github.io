@@ -57,6 +57,8 @@ On Pages, links look like `.../infolaktika/#/app/comics`, because GitHub Pages c
 | Profile | Name, built-in avatar or own photo (`avatars` bucket, own folder only), stream (column-level GRANT) | Students: block, delete, adjust crystals |
 | Crystals (XP) / progress | Only through RPCs (`complete_game`, `save_progress`, `submit_daily`, `submit_test`) | `admin_*` RPCs |
 
+**Comic ratings & suggestions.** After finishing a comic a student rates it 1–5 crystals with an optional comment (`rate_comic`; one review per comic, editable). The admin sees the average per comic, the overall average and every comment in *Комикстерді басқару* (`admin_comic_ratings`, `admin_comic_reviews`). On the home page students send suggestions about a comic, a material or the platform (`send_suggestion`, max 10 a day); the admin reads, marks and deletes them in *Ұсыныстар*.
+
 Sign-up can never create an admin. Survey answers are never sent to students before they submit (`get_test` strips them).
 
 `/admin/*` routes are also blocked in the UI, but the real protection is RLS and the `is_admin()` check inside the database.

@@ -5,6 +5,7 @@ import { ContentCard, GameCard } from '../components/Cards';
 import { DailyChallengeCard } from '../components/DailyChallenge';
 import { IArrowR, IBook, IComic, IFlame, IGame, ITarget, IZap } from '../components/Icons';
 import { Cover, Empty, ProgressBar, SectionHead } from '../components/ui';
+import { SuggestionBox } from '../components/SuggestionBox';
 import { useSession } from '../lib/auth';
 import { categoryLabel, levelProgress } from '../lib/constants';
 import { Link, navigate } from '../lib/router';
@@ -128,6 +129,8 @@ export default function Dashboard() {
       </section>
 
       {/* 5. Progress */}
+      <SuggestionBox />
+
       <section>
         <SectionHead title="Менің прогресім" action={<Link to="/app/achievements" className="text-sm font-bold text-brand hover:underline">Барлығы →</Link>} />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
