@@ -24,6 +24,8 @@ export default function TrueFalse({ data, onFinish }: GameProps<Data>) {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
       if (!done && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a')) choose(true);
       if (!done && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'l')) choose(false);
       if (done && e.key === 'Enter') next();

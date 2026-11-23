@@ -158,7 +158,11 @@ export default function Reader({ kind, id }: { kind: 'comic' | 'book'; id: strin
   // ---- keyboard + swipe ----
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      // Typing (comment box, page number) and open dialogs keep their keys: space, f, + and - are text there.
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(page + 1); }
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(page - 1); }
       if (e.key === '+' || e.key === '=') zoomBy(1);
