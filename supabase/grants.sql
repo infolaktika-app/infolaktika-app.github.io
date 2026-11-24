@@ -61,5 +61,13 @@ grant execute on function public.admin_comic_reviews(uuid) to authenticated;
 grant usage on schema public to service_role;
 grant select on public.tests, public.test_attempts, public.profiles to service_role;
 grant execute on function public._set_explain(uuid, int, text) to service_role;
+grant select on public.guest_attempts to service_role;
+
+-- v6: survey by link (guests, no account)
+grant delete on public.guest_attempts to authenticated;
+grant execute on function public.public_test(text) to anon, authenticated;
+grant execute on function public.submit_public_test(text, text, jsonb) to anon, authenticated;
+grant execute on function public.public_test_result(text, uuid) to anon, authenticated;
+grant execute on function public.admin_new_share_code(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

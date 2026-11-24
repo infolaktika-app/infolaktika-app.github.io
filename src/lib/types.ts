@@ -222,9 +222,23 @@ export interface Test {
   description: string;
   questions: TestQuestion[];
   published: boolean;
+  /** Anyone with the link can take it without an account. */
+  public_link: boolean;
+  share_code: string;
   created_at: string;
   updated_at: string;
 }
+
+/** A survey opened by its share link (no answers). */
+export interface PublicTest { id: string; title: string; description: string; questions: { q: string; options: string[]; type?: QuestionType }[] }
+
+/** A guest's result (no account). Kept in the browser by attempt_id so a refresh shows it again. */
+export interface GuestResult {
+  attempt_id: string; name?: string; score: number; max_score: number;
+  answers: TestAnswer[]; correct: TestCorrect[]; explain?: (string | null)[]; created_at?: string;
+}
+
+export interface GuestResultRow { id: string; name: string; score: number; max_score: number; created_at: string }
 
 export interface MyTestRow {
   id: string;

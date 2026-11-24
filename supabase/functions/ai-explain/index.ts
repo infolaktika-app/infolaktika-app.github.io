@@ -4,6 +4,7 @@
 //
 //   POST {test_id, index}  — a student who already took the test (or the admin) asks for
 //                            the explanation of one question. Cached text is returned as is.
+//   POST {share_code, attempt_id, index} — a guest who took a shared survey by link (no account).
 //   POST {question}        — admin only: draft an explanation in the test editor (not saved).
 //
 // Secrets (Supabase → Edge Functions → Secrets), one of:
@@ -113,6 +114,17 @@ async function generate(q: Q): Promise<string> {
   return text.length > 700 ? text.slice(0, 700).replace(/\s\S*$/, '') + '…' : text;
 }
 
+async function explainCached(db: any, t: { id: string; questions: Q[] }, index: number) {
+  const q = t.questions?.[index];
+  if (!q) throw new Error('test not found');
+  if (q.explain && q.explain.trim()) return { explain: q.explain, cached: true };
+  if (!validQuestion(q)) throw new Error('invalid question');
+  const text = await generate(q);
+  const { error } = await db.rpc('_set_explain', { p_test: t.id, p_index: index, p_text: text });
+  if (error) console.error('cache failed', error.message);
+  return { explain: text };
+}
+
 Deno.serve(async (req) => {
   const asked = req.headers.get('access-control-request-headers');
   if (asked) cors = { ...cors, 'Access-Control-Allow-Headers': asked };
@@ -120,13 +132,24 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   try {
     const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey(), { auth: { persistSession: false } });
+    const body = await req.json().catch(() => ({}));
+
+    // Guest who took a shared survey by link (no account): proven by the share code + their attempt id.
+    if (typeof body.attempt_id === 'string' && typeof body.share_code === 'string') {
+      const index = Number(body.index);
+      const { data: g } = await db.from('guest_attempts').select('test_id').eq('id', body.attempt_id).maybeSingle();
+      if (!g || !Number.isInteger(index)) return json({ error: 'forbidden' }, 403);
+      const { data: t } = await db.from('tests').select('id, questions, share_code').eq('id', g.test_id).single();
+      if (!t || t.share_code !== body.share_code) return json({ error: 'forbidden' }, 403);
+      return json(await explainCached(db, t, index));
+    }
+
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     const { data: au } = await db.auth.getUser(jwt);
     if (!au?.user) return json({ error: 'ai error: not authenticated (сайтқа қайта кіріңіз)' }, 401);
     const { data: me } = await db.from('profiles').select('role, is_blocked').eq('id', au.user.id).single();
     if (!me || me.is_blocked) return json({ error: 'forbidden' }, 403);
     const isAdmin = me.role === 'admin';
-    const body = await req.json().catch(() => ({}));
 
     // admin draft in the editor
     if (body.question) {
@@ -144,12 +167,7 @@ Deno.serve(async (req) => {
       const { data: a } = await db.from('test_attempts').select('user_id').eq('test_id', t.id).eq('user_id', au.user.id).maybeSingle();
       if (!a) return json({ error: 'forbidden' }, 403);  // answers stay hidden until the student has submitted
     }
-    if (q.explain && q.explain.trim()) return json({ explain: q.explain, cached: true });
-    if (!validQuestion(q)) return json({ error: 'invalid question' }, 400);
-    const text = await generate(q);
-    const { error } = await db.rpc('_set_explain', { p_test: t.id, p_index: index, p_text: text });
-    if (error) console.error('cache failed', error.message);
-    return json({ explain: text });
+    return json(await explainCached(db, t, index));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(msg);

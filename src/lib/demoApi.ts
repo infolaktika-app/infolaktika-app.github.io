@@ -32,12 +32,13 @@ interface DB {
   settings: Settings;
   tests: Test[];
   attempts: { test_id: string; user_id: string; score: number; max_score: number; answers: TestAnswer[]; created_at: string }[];
+  guests: { id: string; test_id: string; name: string; score: number; max_score: number; answers: TestAnswer[]; created_at: string }[];
   materials: Omit<Material, 'url'>[];
   reviews: { comic_id: string; user_id: string; rating: number; comment: string; updated_at: string }[];
   suggestions: Suggestion[];
 }
 
-const KEY = 'infolaktika-demo-v6';
+const KEY = 'infolaktika-demo-v7';
 const listeners = new Set<() => void>();
 const uuid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -123,7 +124,7 @@ async function freshDb(): Promise<DB> {
     comics: seed.comics.map((c, i) => ({ ...c, published: true, created_at: created(seed.comics.length - 1 - i) })),
     books: seed.books.map((b, i) => ({ ...b, published: true, created_at: created(10 - i) })),
     games, results: [], progress: [], xp: [], earned: [], daily: [], notifications: [],
-    settings: { ...seed.settings }, tests: [], attempts: [], materials: [], reviews: [], suggestions: [],
+    settings: { ...seed.settings }, tests: [], attempts: [], guests: [], materials: [], reviews: [], suggestions: [],
   };
   const adminUser = await makeUser('Әкімші', '', 'admin', 'admin123', 'admin');
   db.users.push(adminUser);
@@ -154,7 +155,7 @@ async function freshDb(): Promise<DB> {
   }
   const test: Test = {
     id: uuid(), author_id: adminUser.id, title: 'Информатика негіздері: апталық тест', description: 'Python, HTML, байт және алгоритм бойынша 5 сұрақ.',
-    questions: SAMPLE_TEST, published: true, created_at: created(3), updated_at: created(3),
+    questions: SAMPLE_TEST, published: true, public_link: true, share_code: 'demo-test1', created_at: created(3), updated_at: created(3),
   };
   db.tests.push(test);
   db.users.filter((u) => u.role === 'student').slice(0, 3).forEach((u, i) => {
@@ -512,7 +513,7 @@ export async function createDemoApi(): Promise<Api> {
       if (!qs.length || qs.length > 50 || qs.some((q) => !q.q.trim() || q.options.length !== 4 || q.options.some((o) => !o.trim())
         || (q.type === 'multi' ? !(q.answers?.length && q.answers.every((a) => a >= 0 && a <= 3)) : !(q.answer >= 0 && q.answer <= 3))))
         throw new Error('invalid question');
-      const row = { title: t.title.trim(), description: t.description.trim(), questions: qs, published: t.published, updated_at: now() };
+      const row = { title: t.title.trim(), description: t.description.trim(), questions: qs, published: t.published, public_link: !!t.public_link, updated_at: now() };
       const existing = t.id ? db.tests.find((x) => x.id === t.id) : undefined;
       if (t.id && !existing) throw new Error('test not found');
       if (existing) {
@@ -527,11 +528,61 @@ export async function createDemoApi(): Promise<Api> {
         Object.assign(existing, row);
         if (row.published && !wasPublished) notifyTest(existing);
       } else {
-        const nt: Test = { ...row, id: uuid(), author_id: u.id, created_at: now() };
+        const nt: Test = { ...row, id: uuid(), author_id: u.id, share_code: uuid().replace(/-/g, '').slice(0, 10), created_at: now() };
         db.tests.unshift(nt);
         if (nt.published) notifyTest(nt);
       }
       save();
+    },
+    async adminNewShareCode(testId) {
+      admin();
+      const t = db.tests.find((x) => x.id === testId);
+      if (!t) throw new Error('test not found');
+      t.share_code = uuid().replace(/-/g, '').slice(0, 10);
+      save();
+      return t.share_code;
+    },
+    async guestResults(testId) {
+      admin();
+      return delay(db.guests.filter((g) => g.test_id === testId).sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map(({ id, name, score, max_score, created_at }) => ({ id, name, score, max_score, created_at })));
+    },
+    async deleteGuestResult(id) {
+      admin();
+      db.guests = db.guests.filter((g) => g.id !== id);
+      save();
+    },
+    async publicTest(code) {
+      const t = db.tests.find((x) => x.share_code === code && x.public_link && x.published);
+      return delay(t ? { id: t.id, title: t.title, description: t.description, questions: t.questions.map((q) => ({ q: q.q, options: q.options, type: q.type ?? 'single' })) } : null);
+    },
+    async submitPublicTest(code, name, answers) {
+      const t = db.tests.find((x) => x.share_code === code && x.public_link && x.published);
+      if (!t) throw new Error('test not found');
+      const nm = name.trim().replace(/\s+/g, ' ').slice(0, 80);
+      if (nm.length < 2) throw new Error('guest name required');
+      const clean = t.questions.map((q, i) => cleanAnswer(q, answers[i]));
+      const score = clean.filter((a, i) => sameAnswer(a, correctOf(t.questions[i]))).length;
+      const g = { id: uuid(), test_id: t.id, name: nm, score, max_score: t.questions.length, answers: clean, created_at: now() };
+      db.guests.push(g);
+      save();
+      return delay({ attempt_id: g.id, score, max_score: g.max_score, answers: clean, correct: t.questions.map(correctOf), explain: t.questions.map((q) => q.explain || null) });
+    },
+    async publicTestResult(code, attemptId) {
+      const g = db.guests.find((x) => x.id === attemptId);
+      const t = g && db.tests.find((x) => x.id === g.test_id && x.share_code === code);
+      if (!g || !t) return delay(null);
+      return delay({ attempt_id: g.id, name: g.name, score: g.score, max_score: g.max_score, answers: g.answers, created_at: g.created_at,
+        correct: t.questions.map(correctOf), explain: t.questions.map((q) => q.explain || null) });
+    },
+    async explainGuest(code, attemptId, index) {
+      const g = db.guests.find((x) => x.id === attemptId);
+      const t = g && db.tests.find((x) => x.id === g.test_id && x.share_code === code);
+      const q = t?.questions[index];
+      if (!t || !q) throw new Error('forbidden');
+      if (!q.explain) { q.explain = demoExplain(q); save(); }
+      await new Promise((r) => setTimeout(r, 900));
+      return q.explain;
     },
     async draftExplain(q) {
       admin();
@@ -542,6 +593,7 @@ export async function createDemoApi(): Promise<Api> {
       admin();
       db.tests = db.tests.filter((x) => x.id !== id);
       db.attempts = db.attempts.filter((a) => a.test_id !== id);
+      db.guests = db.guests.filter((a) => a.test_id !== id);
       save();
     },
     async testResults(id) {

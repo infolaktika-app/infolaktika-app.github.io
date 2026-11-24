@@ -14,6 +14,8 @@ const read = (): Loc => {
 };
 
 export const hrefFor = (to: string) => (HASH ? '#' + to : to);
+/** Full URL of an in-app path, for sharing (e.g. https://site/#/t/abc). */
+export const absoluteUrl = (to: string) => (HASH ? window.location.origin + window.location.pathname + '#' + to : window.location.origin + to);
 
 export function navigate(to: string, opts: { replace?: boolean } = {}) {
   if (opts.replace) window.history.replaceState(null, '', hrefFor(to));

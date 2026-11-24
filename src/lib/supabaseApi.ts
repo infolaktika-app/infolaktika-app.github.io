@@ -209,7 +209,7 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
       return check(await sb.from('tests').select('*').order('created_at', { ascending: false })) as Test[];
     },
     async saveTest(t) {
-      const row = { title: t.title.trim(), description: t.description.trim(), questions: t.questions, published: t.published };
+      const row = { title: t.title.trim(), description: t.description.trim(), questions: t.questions, published: t.published, public_link: !!t.public_link };
       if (t.id) check(await sb.from('tests').update(row).eq('id', t.id));
       else check(await sb.from('tests').insert({ ...row, author_id: await uid() }));
     },
@@ -218,6 +218,17 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     },
     testResults: (id) => rpc('admin_test_results', { p_test: id }),
     draftExplain: (q) => invokeAi({ question: q }),
+    adminNewShareCode: (testId) => rpc('admin_new_share_code', { p_test: testId }),
+    async guestResults(testId) {
+      return check(await sb.from('guest_attempts').select('id, name, score, max_score, created_at').eq('test_id', testId).order('created_at', { ascending: false }).limit(500)) as any;
+    },
+    async deleteGuestResult(id) {
+      check(await sb.from('guest_attempts').delete().eq('id', id));
+    },
+    publicTest: (code) => rpc('public_test', { p_code: code }),
+    submitPublicTest: (code, name, answers) => rpc('submit_public_test', { p_code: code, p_name: name, p_answers: answers }),
+    publicTestResult: (code, attemptId) => rpc('public_test_result', { p_code: code, p_attempt: attemptId }),
+    explainGuest: (code, attemptId, index) => invokeAi({ share_code: code, attempt_id: attemptId, index }),
 
     async listComics() {
       return check(await sb.from('comics').select('*').order('created_at', { ascending: false })) as Comic[];

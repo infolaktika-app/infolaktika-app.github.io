@@ -2,7 +2,7 @@ import type {
   Achievement, AdminStats, Book, Comic, ContentInput, DailyChallenge, Game, GameResult, ItemType,
   LeaderRow, MyStats, Notification, Profile, ReadingProgress, RewardResult, Settings, SignUpInput,
   StudentDetail, StudentRow, ProfilePatch, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
-  Test, TestResultRow, TestAnswer, TestQuestion, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
+  Test, TestResultRow, TestAnswer, TestQuestion, PublicTest, GuestResult, GuestResultRow, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
   Suggestion, SuggestionInput,
 } from './types';
 
@@ -57,6 +57,16 @@ export interface Api {
   testResults(id: string): Promise<TestResultRow[]>;
   /** Admin: draft an AI explanation for a question in the editor (not saved). */
   draftExplain(q: TestQuestion): Promise<string>;
+  /** Admin: replace the share link (the old one stops working). Returns the new code. */
+  adminNewShareCode(testId: string): Promise<string>;
+  guestResults(testId: string): Promise<GuestResultRow[]>;
+  deleteGuestResult(id: string): Promise<void>;
+
+  // surveys shared by link — work without an account
+  publicTest(code: string): Promise<PublicTest | null>;
+  submitPublicTest(code: string, name: string, answers: TestAnswer[]): Promise<GuestResult>;
+  publicTestResult(code: string, attemptId: string): Promise<GuestResult | null>;
+  explainGuest(code: string, attemptId: string, index: number): Promise<string>;
 
   listComics(): Promise<Comic[]>;
   getComic(id: string): Promise<Comic | null>;
@@ -125,6 +135,8 @@ export function friendlyError(e: unknown): string {
   if (/already registered|already exists|duplicate key.*username/i.test(msg)) return 'Бұл логин бос емес. Басқасын таңда.';
   if (/test already answered/i.test(msg)) return 'Бұл сауалнама бұрын тапсырылған.';
   if (/test not found/i.test(msg)) return 'Сауалнама табылмады.';
+  if (/guest name required/i.test(msg)) return 'Аты-жөніңді жаз (кемінде 2 әріп).';
+  if (/too many attempts/i.test(msg)) return 'Бұл сілтеме арқылы тым көп тапсырылды. Сәл кейінірек қайталаңыз.';
   if (/ai not configured/i.test(msg)) return 'ИИ әлі қосылмаған: Supabase-та AI кілтін орнату керек.';
   if (/Gemini 429|quota/i.test(msg)) return 'ИИ лимиті уақытша бітті. 1–2 минуттан кейін қайталаңыз.';
   if (/Gemini 503|high demand|overloaded/i.test(msg)) return 'ИИ қазір бос емес. Бірнеше секундтан кейін қайталаңыз.';

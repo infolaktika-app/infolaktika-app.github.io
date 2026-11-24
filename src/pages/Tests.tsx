@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GroupRating } from '../components/GroupRating';
 import { IArrowR, ICheck, IChevL, IClipboard, IBulb, IRefresh } from '../components/Icons';
 import { Empty, PageLoader, ProgressBar, Spinner, Tabs } from '../components/ui';
@@ -89,8 +89,7 @@ export default function TestsPage() {
 }
 
 /** Explanation of a wrongly answered question (written by AI on the server; students just see "Түсіндірме"). Fetched lazily (when the card scrolls into view) and cached on the server. */
-function ExplainBox({ testId, index, initial }: { testId: string; index: number; initial: string | null | undefined }) {
-  const { api } = useSession();
+function ExplainBox({ fetchText, initial }: { fetchText: () => Promise<string>; initial: string | null | undefined }) {
   const [text, setText] = useState<string | null>(initial ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [err, setErr] = useState('');
@@ -98,9 +97,10 @@ function ExplainBox({ testId, index, initial }: { testId: string; index: number;
 
   const load = useCallback(async () => {
     setState('loading');
-    try { setText(await api.explainQuestion(testId, index)); setState('idle'); }
+    try { setText(await fetchText()); setState('idle'); }
     catch { setErr('Түсіндірме әзірге дайын емес.'); setState('error'); }
-  }, [api, testId, index]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (text || !ref.current) return;
@@ -131,7 +131,9 @@ function ExplainBox({ testId, index, initial }: { testId: string; index: number;
   );
 }
 
-function Review({ testId, questions, attempt }: { testId: string; questions: TestForStudent['questions']; attempt: TestAttempt }) {
+export type ReviewAttempt = Pick<TestAttempt, 'answers' | 'correct' | 'explain'>;
+
+export function Review({ questions, attempt, explain }: { questions: TestForStudent['questions']; attempt: ReviewAttempt; explain: (index: number) => Promise<string> }) {
   const [onlyWrong, setOnlyWrong] = useState(false);
   const status = questions.map((_, i) => (!hasAnswer(attempt.answers[i]) ? 'empty' : sameAnswer(attempt.answers[i], attempt.correct[i]) ? 'right' : 'wrong'));
   const wrong = status.filter((x) => x !== 'right').length;
@@ -199,7 +201,7 @@ function Review({ testId, questions, attempt }: { testId: string; questions: Tes
             {multi && st === 'wrong' && (
               <p className="mt-2 text-xs font-semibold text-ink/50">Бұл сұрақта барлық дұрыс нұсқаны (және тек соларды) белгілеу керек еді.</p>
             )}
-            {st !== 'right' && <ExplainBox testId={testId} index={i} initial={attempt.explain?.[i]} />}
+            {st !== 'right' && <ExplainBox fetchText={() => explain(i)} initial={attempt.explain?.[i]} />}
           </div>
         );
       })}
@@ -211,9 +213,6 @@ export function TestTake({ id }: { id: string }) {
   const { api } = useSession();
   const toast = useToast();
   const { data: t, loading, error, setData } = useAsync(() => api.getTest(id), [id]);
-  const [i, setI] = useState(0);
-  const [answers, setAnswers] = useState<TestAnswer[]>([]);
-  const [busy, setBusy] = useState(false);
 
   if (loading) return <PageLoader />;
   if (error || !t) return <Empty title="Сауалнама табылмады" text={friendlyError(error)} action={<Link to="/app/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
@@ -233,15 +232,37 @@ export function TestTake({ id }: { id: string }) {
           <ProgressBar value={p} className="mx-auto mt-4 max-w-sm" tone="sun" />
           <p className="mt-3 text-xs text-ink/45">Сауалнама бір рет қана тапсырылады. Төменде қай сұрақтан қате кеткенін және түсіндірмесін қарап шық.</p>
         </div>
-        <Review testId={t.id} questions={t.questions} attempt={a} />
+        <Review questions={t.questions} attempt={a} explain={(k) => api.explainQuestion(t.id, k)} />
       </div>
     );
   }
 
-  const q = t.questions[i];
-  const total = t.questions.length;
+  return (
+    <QuestionRunner title={t.title} description={t.description} questions={t.questions} back={back}
+      onSubmit={async (full) => {
+        try {
+          const r = await api.submitTest(t.id, full);
+          toast.reward(r, `${r.score}/${r.max_score} дұрыс!`);
+          setData({ ...t, attempt: { score: r.score, max_score: r.max_score, answers: full, correct: r.correct, explain: r.explain, created_at: new Date().toISOString() } });
+        } catch (e) {
+          toast.error(friendlyError(e));
+        }
+      }} />
+  );
+}
+
+/** One question at a time; used by signed-in students and by guests on a shared link. */
+export function QuestionRunner({ title, description, questions, back, onSubmit }: {
+  title: string; description: string; questions: TestForStudent['questions']; back?: ReactNode;
+  onSubmit: (answers: TestAnswer[]) => Promise<void>;
+}) {
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState<TestAnswer[]>([]);
+  const [busy, setBusy] = useState(false);
+  const q = questions[i];
+  const total = questions.length;
   const multi = isMulti(q);
-  const answered = t.questions.filter((_, k) => hasAnswer(answers[k])).length;
+  const answered = questions.filter((_, k) => hasAnswer(answers[k])).length;
   const pick = (j: number) => setAnswers((x) => {
     const n = [...x];
     if (multi) {
@@ -253,25 +274,16 @@ export function TestTake({ id }: { id: string }) {
 
   const submit = async () => {
     setBusy(true);
-    try {
-      const full = t.questions.map((qq, k) => cleanAnswer(qq, answers[k]));
-      const r = await api.submitTest(t.id, full);
-      toast.reward(r, `${r.score}/${r.max_score} дұрыс!`);
-      setData({ ...t, attempt: { score: r.score, max_score: r.max_score, answers: full, correct: r.correct, explain: r.explain, created_at: new Date().toISOString() } });
-      window.scrollTo({ top: 0 });
-    } catch (e) {
-      toast.error(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
+    try { await onSubmit(questions.map((qq, k) => cleanAnswer(qq, answers[k]))); window.scrollTo({ top: 0 }); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       {back}
       <div>
-        <h1 className="text-2xl font-extrabold leading-tight">{t.title}</h1>
-        {t.description && <p className="mt-1 text-sm text-ink/55">{t.description}</p>}
+        <h1 className="text-2xl font-extrabold leading-tight">{title}</h1>
+        {description && <p className="mt-1 text-sm text-ink/55">{description}</p>}
       </div>
       <div className="flex items-center gap-3">
         <ProgressBar value={((i + 1) / total) * 100} className="flex-1" />
@@ -307,7 +319,7 @@ export function TestTake({ id }: { id: string }) {
         )}
       </div>
       <div className="flex flex-wrap justify-center gap-1.5">
-        {t.questions.map((_, k) => (
+        {questions.map((_, k) => (
           <button
             key={k}
             onClick={() => setI(k)}

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { IChevL, IEdit, IPlus, ISparkle, ITrash } from '../components/Icons';
-import { Avatar, Confirm, Empty, PageLoader, ProgressBar, Spinner, StatCard } from '../components/ui';
+import { IChevL, ICopy, IEdit, ILink, IPlus, IRefresh, ISparkle, ITrash } from '../components/Icons';
+import { Avatar, Confirm, Empty, Modal, PageLoader, ProgressBar, Spinner, StatCard } from '../components/ui';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { formatDate, timeAgo } from '../lib/constants';
-import { Link, navigate } from '../lib/router';
+import { absoluteUrl, Link, navigate } from '../lib/router';
 import { useToast } from '../lib/toast';
 import { correctOf, isMulti, LETTERS } from '../lib/testLogic';
 import type { QuestionType, Test, TestQuestion } from '../lib/types';
@@ -12,11 +12,69 @@ import { useAsync } from '../lib/useAsync';
 
 const blankQ = (): TestQuestion => ({ q: '', options: ['', '', '', ''], type: 'single', answer: 0, answers: [], explain: '' });
 
+const shareUrl = (code: string) => absoluteUrl(`/t/${code}`);
+
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  }
+}
+
+/** Turn the guest link on/off, copy it, or replace it. */
+export function SharePanel({ test, onChange }: { test: Test; onChange: (t: Test) => void }) {
+  const { api } = useSession();
+  const toast = useToast();
+  const [busy, setBusy] = useState<'' | 'toggle' | 'new'>('');
+  const url = shareUrl(test.share_code);
+  const toggle = async () => {
+    setBusy('toggle');
+    try {
+      const next = { ...test, public_link: !test.public_link };
+      await api.saveTest(next);
+      onChange(next);
+      toast.success(next.public_link ? 'Сілтеме қосылды' : 'Сілтеме өшірілді', next.public_link ? 'Енді оны оқушыларға жібере аласыз' : 'Ол арқылы енді ешкім кіре алмайды');
+    } catch (e) { toast.error(friendlyError(e)); } finally { setBusy(''); }
+  };
+  const regen = async () => {
+    setBusy('new');
+    try { const code = await api.adminNewShareCode(test.id); onChange({ ...test, share_code: code }); toast.success('Жаңа сілтеме жасалды', 'Ескі сілтеме енді жұмыс істемейді'); }
+    catch (e) { toast.error(friendlyError(e)); } finally { setBusy(''); }
+  };
+  return (
+    <div className="space-y-4">
+      <label className="flex cursor-pointer items-start gap-3">
+        <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#17404E]" checked={test.public_link} onChange={toggle} disabled={!!busy} />
+        <span>
+          <span className="font-bold">Сілтеме арқылы тіркелусіз тапсыруға рұқсат беру</span>
+          <span className="mt-0.5 block text-sm text-ink/55">Сілтемені ашқан кез келген адам атын жазып, бірден тапсырады. Соңында нәтижесін, түсіндірмелерді және платформаға тіркелу ұсынысын көреді. Мұндай нәтижелер кристалл мен рейтингке әсер етпейді.</span>
+        </span>
+      </label>
+      {!test.published && test.public_link && <p className="rounded-2xl bg-sun/25 px-4 py-2.5 text-sm font-semibold text-ink/75">Сауалнама жасырын — сілтеме жариялағаннан кейін ғана ашылады.</p>}
+      {test.public_link && (
+        <>
+          <div className="flex items-center gap-2 rounded-2xl bg-mist p-1.5 pl-4">
+            <ILink className="h-4 w-4 shrink-0 text-brand" />
+            <input readOnly value={url} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold outline-none" aria-label="Сауалнама сілтемесі" />
+            <button className="btn btn-primary btn-sm shrink-0" onClick={async () => { if (await copyText(url)) toast.success('Сілтеме көшірілді', 'Оны WhatsApp, Telegram т.б. арқылы жіберіңіз'); else toast.error('Көшіру мүмкін болмады'); }}><ICopy className="h-4 w-4" /> Көшіру</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a className="btn btn-soft btn-sm" href={url} target="_blank" rel="noreferrer">Ашып көру</a>
+            <button className="btn btn-ghost btn-sm" onClick={regen} disabled={!!busy}>{busy === 'new' ? <Spinner className="h-4 w-4" /> : <IRefresh className="h-4 w-4" />} Жаңа сілтеме жасау</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function TestsManager() {
   const { api } = useSession();
   const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.adminTests(), []);
   const [del, setDel] = useState<Test | null>(null);
+  const [share, setShare] = useState<Test | null>(null);
   const [busy, setBusy] = useState(false);
   if (loading && !data) return <PageLoader />;
   const tests = data ?? [];
@@ -41,12 +99,14 @@ export default function TestsManager() {
               <div className="flex flex-wrap gap-1.5">
                 <span className="chip bg-sun/35 text-ink">📝 {t.questions.length} сұрақ</span>
                 <span className={`chip ${t.published ? 'bg-haze text-brand' : 'bg-mist text-ink/50'}`}>{t.published ? 'Жарияланған' : 'Жасырын'}</span>
+                {t.public_link && <span className="chip bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">🔗 Сілтеме ашық</span>}
               </div>
               <h3 className="mt-3 text-lg font-extrabold leading-snug [overflow-wrap:anywhere]">{t.title}</h3>
               {t.description && <p className="mt-1 line-clamp-2 text-sm text-ink/55">{t.description}</p>}
               <p className="mt-2 text-xs text-ink/40">{formatDate(t.created_at)}</p>
               <div className="mt-auto flex items-center gap-2 pt-4">
                 <Link to={`/admin/tests/${t.id}`} className="btn btn-soft btn-sm flex-1">Нәтижелер</Link>
+                <button className="icon-btn !h-10 !w-10" onClick={() => setShare(t)} aria-label="Сілтемемен бөлісу" title="Сілтемемен бөлісу"><ILink className="h-[18px] w-[18px]" /></button>
                 <Link to={`/admin/tests/${t.id}/edit`} className="icon-btn !h-10 !w-10" aria-label="Өңдеу" title="Өңдеу"><IEdit className="h-[18px] w-[18px]" /></Link>
                 <button className="icon-btn !h-10 !w-10 hover:!text-rose-500" onClick={() => setDel(t)} aria-label="Жою" title="Жою"><ITrash className="h-[18px] w-[18px]" /></button>
               </div>
@@ -54,6 +114,9 @@ export default function TestsManager() {
           ))}
         </div>
       )}
+      <Modal open={!!share} onClose={() => { setShare(null); reload(); }} title={share ? `Сілтемемен бөлісу: ${share.title}` : ''}>
+        {share && <SharePanel test={share} onChange={setShare} />}
+      </Modal>
       <Confirm open={!!del} onClose={() => setDel(null)} busy={busy} title="Сауалнама жойылсын ба?"
         text={`«${del?.title}» және оның барлық нәтижелері жойылады.`}
         onConfirm={async () => {
@@ -73,6 +136,7 @@ export function TestEditor({ id }: { id?: string }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [published, setPublished] = useState(true);
+  const [publicLink, setPublicLink] = useState(false);
   const [qs, setQs] = useState<TestQuestion[]>([blankQ()]);
   const [busy, setBusy] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -80,7 +144,7 @@ export function TestEditor({ id }: { id?: string }) {
   useEffect(() => {
     const t = existing.data;
     if (t) {
-      setTitle(t.title); setDesc(t.description); setPublished(t.published);
+      setTitle(t.title); setDesc(t.description); setPublished(t.published); setPublicLink(!!t.public_link);
       setQs(t.questions.map((q) => ({ ...q, type: q.type ?? 'single', options: [...q.options], answers: isMulti(q) ? [...(q.answers ?? [])] : [], explain: q.explain ?? '' })));
     }
   }, [existing.data]);
@@ -146,7 +210,7 @@ export function TestEditor({ id }: { id?: string }) {
     }
     setBusy(true);
     try {
-      await api.saveTest({ id, title, description: desc, published, questions: qs.map(clean) });
+      await api.saveTest({ id, title, description: desc, published, public_link: publicLink, questions: qs.map(clean) });
       toast.success(id ? 'Сақталды' : 'Сауалнама жарияланды', published && !id ? 'Барлық оқушыға хабарлама жіберілді' : undefined);
       navigate('/admin/tests');
     } catch (e) {
@@ -174,6 +238,11 @@ export function TestEditor({ id }: { id?: string }) {
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" className="h-5 w-5 accent-[#17404E]" checked={published} onChange={(e) => setPublished(e.target.checked)} />
           <span className="font-semibold">Бірден жариялау (барлық оқушыға көрінеді)</span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#17404E]" checked={publicLink} onChange={(e) => setPublicLink(e.target.checked)} />
+          <span><span className="font-semibold">Сілтеме арқылы тіркелусіз тапсыруға рұқсат беру</span>
+            <span className="block text-sm text-ink/50">Сақтағаннан кейін сілтемені сауалнама карточкасындағы 🔗 батырмасынан көшіресіз.</span></span>
         </label>
       </div>
 
@@ -251,6 +320,9 @@ export function TestResults({ id }: { id: string }) {
   const test = useAsync(() => api.adminTests().then((l) => l.find((t) => t.id === id) ?? null), [id]);
   const res = useAsync(() => api.testResults(id), [id]);
   const students = useAsync(() => api.adminUsers(), []);
+  const guests = useAsync(() => api.guestResults(id), [id]);
+  const toast = useToast();
+  const [delGuest, setDelGuest] = useState<string | null>(null);
   if (test.loading || res.loading) return <PageLoader />;
   const t = test.data;
   if (!t) return <Empty title="Сауалнама табылмады" action={<Link to="/admin/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
@@ -293,6 +365,34 @@ export function TestResults({ id }: { id: string }) {
           </div>
         )}
       </section>
+      <section className="card p-5 sm:p-6">
+        <h2 className="mb-3 flex items-center gap-2 font-extrabold"><ILink className="h-5 w-5 text-brand" /> Сілтемемен бөлісу</h2>
+        <SharePanel test={t} onChange={(nt) => test.setData(nt)} />
+      </section>
+      {(guests.data?.length ?? 0) > 0 && (
+        <section>
+          <h2 className="mb-3 font-extrabold">Сілтеме арқылы тапсырғандар ({guests.data!.length})</h2>
+          <div className="card divide-y divide-haze">
+            {guests.data!.map((g) => (
+              <div key={g.id} className="flex items-center gap-3 p-4 sm:px-6">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-mist font-extrabold text-ink/50">{g.name.slice(0, 1).toUpperCase()}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-extrabold">{g.name} <span className="chip ml-1 bg-mist !px-2 !py-0.5 text-[11px] text-ink/50">қонақ</span></p>
+                  <p className="truncate text-xs text-ink/45">{timeAgo(g.created_at)}</p>
+                  <ProgressBar value={(g.score / g.max_score) * 100} className="mt-1.5 !h-1.5 max-w-48" tone="sun" />
+                </div>
+                <span className="chip shrink-0 bg-sun/30 text-ink">{g.score}/{g.max_score}</span>
+                <button className="icon-btn !h-9 !w-9 shrink-0 hover:!text-rose-500" onClick={() => setDelGuest(g.id)} aria-label="Нәтижені жою"><ITrash className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <Confirm open={!!delGuest} onClose={() => setDelGuest(null)} title="Бұл нәтиже жойылсын ба?" text="Сілтеме арқылы тапсырылған нәтиже жойылады."
+        onConfirm={async () => {
+          try { await api.deleteGuestResult(delGuest!); setDelGuest(null); guests.reload(); toast.success('Жойылды'); }
+          catch (e) { toast.error(friendlyError(e)); }
+        }} />
       {missing.length > 0 && (
         <section>
           <h2 className="mb-3 font-extrabold">Әлі тапсырмағандар ({missing.length})</h2>

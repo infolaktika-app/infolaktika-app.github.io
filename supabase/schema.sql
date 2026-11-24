@@ -1157,6 +1157,87 @@ begin
 end $$;
 revoke all on function public._set_explain(uuid, int, text) from public, anon, authenticated;
 
+-- =====================================================================
+-- 10. v6: share a survey by link — anyone types their name and takes it
+--     without an account. Guest results are seen only by the admin and do
+--     not affect crystals or the rating.
+-- =====================================================================
+alter table public.tests add column if not exists public_link boolean not null default false;
+alter table public.tests add column if not exists share_code text;
+update public.tests set share_code = substr(replace(gen_random_uuid()::text, '-', ''), 1, 10) where share_code is null;
+alter table public.tests alter column share_code set default substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+alter table public.tests alter column share_code set not null;
+create unique index if not exists tests_share_code_idx on public.tests(share_code);
+
+create table if not exists public.guest_attempts (
+  id         uuid primary key default gen_random_uuid(),
+  test_id    uuid not null references public.tests(id) on delete cascade,
+  name       text not null check (length(trim(name)) between 2 and 80),
+  score      integer not null,
+  max_score  integer not null,
+  answers    jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists guest_attempts_test_idx on public.guest_attempts(test_id, created_at desc);
+alter table public.guest_attempts enable row level security;
+drop policy if exists guest_attempts_admin on public.guest_attempts;
+create policy guest_attempts_admin on public.guest_attempts for select to authenticated using (public.is_admin());
+drop policy if exists guest_attempts_delete on public.guest_attempts;
+create policy guest_attempts_delete on public.guest_attempts for delete to authenticated using (public.is_admin());
+
+-- The shared survey without answers (null when the link is off or wrong).
+create or replace function public.public_test(p_code text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', t.id, 'title', t.title, 'description', t.description,
+    'questions', (select jsonb_agg(jsonb_build_object('q', q->'q', 'options', q->'options', 'type', coalesce(q->>'type', 'single')) order by i)
+                  from jsonb_array_elements(t.questions) with ordinality x(q, i)))
+  from tests t where t.share_code = p_code and t.public_link and t.published
+$$;
+
+create or replace function public.submit_public_test(p_code text, p_name text, p_answers jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare t tests; n int; s int := 0; i int; clean jsonb := '[]'::jsonb; c jsonb; aid uuid; nm text := left(regexp_replace(trim(coalesce(p_name, '')), '\s+', ' ', 'g'), 80);
+begin
+  select * into t from tests where share_code = p_code and public_link and published;
+  if t.id is null then raise exception 'test not found'; end if;
+  if length(nm) < 2 then raise exception 'guest name required'; end if;
+  if jsonb_typeof(p_answers) <> 'array' then raise exception 'invalid answers'; end if;
+  -- simple flood guard for an open link
+  if (select count(*) from guest_attempts where test_id = t.id and created_at > now() - interval '1 hour') >= 300 then
+    raise exception 'too many attempts';
+  end if;
+  n := jsonb_array_length(t.questions);
+  for i in 0 .. n - 1 loop
+    c := _q_clean(t.questions->i, p_answers->i);
+    clean := clean || jsonb_build_array(c);
+    if c <> 'null'::jsonb and c = _q_correct(t.questions->i) then s := s + 1; end if;
+  end loop;
+  insert into guest_attempts(test_id, name, score, max_score, answers) values (t.id, nm, s, n, clean) returning id into aid;
+  return jsonb_build_object('attempt_id', aid, 'score', s, 'max_score', n, 'answers', clean,
+    'correct', (select jsonb_agg(_q_correct(q) order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)),
+    'explain', (select jsonb_agg(nullif(q->>'explain', '') order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)));
+end $$;
+
+-- A guest re-opening the link later sees their result again (they keep the attempt id).
+create or replace function public.public_test_result(p_code text, p_attempt uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('attempt_id', g.id, 'name', g.name, 'score', g.score, 'max_score', g.max_score, 'answers', g.answers, 'created_at', g.created_at,
+    'correct', (select jsonb_agg(_q_correct(q) order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)),
+    'explain', (select jsonb_agg(nullif(q->>'explain', '') order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)))
+  from guest_attempts g join tests t on t.id = g.test_id
+  where g.id = p_attempt and t.share_code = p_code
+$$;
+
+-- Admin: give the survey a new link (the old one stops working).
+create or replace function public.admin_new_share_code(p_test uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare c text := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  update tests set share_code = c where id = p_test;
+  return c;
+end $$;
+
 -- ---------------------------------------------------------------
 -- INFOLAKTIKA: Data API рұқсаттары.
 -- Жаңа Supabase жобаларында public кестелері anon/authenticated рөлдеріне
@@ -1221,5 +1302,13 @@ grant execute on function public.admin_comic_reviews(uuid) to authenticated;
 grant usage on schema public to service_role;
 grant select on public.tests, public.test_attempts, public.profiles to service_role;
 grant execute on function public._set_explain(uuid, int, text) to service_role;
+grant select on public.guest_attempts to service_role;
+
+-- v6: survey by link (guests, no account)
+grant delete on public.guest_attempts to authenticated;
+grant execute on function public.public_test(text) to anon, authenticated;
+grant execute on function public.submit_public_test(text, text, jsonb) to anon, authenticated;
+grant execute on function public.public_test_result(text, uuid) to anon, authenticated;
+grant execute on function public.admin_new_share_code(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

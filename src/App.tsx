@@ -22,6 +22,7 @@ const AdminApp = lazy(() => import('./admin/AdminApp'));
 const TestsPage = lazy(() => import('./pages/Tests'));
 const TestTake = lazy(() => import('./pages/Tests').then((m) => ({ default: m.TestTake })));
 const Materials = lazy(() => import('./pages/Materials'));
+const PublicTestPage = lazy(() => import('./pages/PublicTest'));
 
 type Route = { path: string; render: (p: Record<string, string>) => ReactNode };
 
@@ -70,6 +71,8 @@ function Routes() {
   if (path === '/') return profile ? <Redirect to={homeFor(profile)} /> : <Landing />;
   if (path === '/login') return profile ? <Redirect to={homeFor(profile)} /> : <Login />;
   if (path === '/register') return profile ? <Redirect to={homeFor(profile)} /> : <Register />;
+  const shared = match('/t/:code', path);   // survey shared by link: works with or without an account
+  if (shared) return <Suspense fallback={<PageLoader />}><PublicTestPage code={shared.code} /></Suspense>;
   if (path === '/admin/login') return profile?.role === 'admin' ? <Redirect to="/admin" /> : <AdminLogin />;
 
   // ---- admin (role checked here AND enforced by RLS on the server) ----
