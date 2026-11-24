@@ -218,6 +218,7 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     },
     testResults: (id) => rpc('admin_test_results', { p_test: id }),
     draftExplain: (q) => invokeAi({ question: q }),
+    testOverview: (testId) => rpc('admin_test_overview', { p_test: testId }),
     adminNewShareCode: (testId) => rpc('admin_new_share_code', { p_test: testId }),
     async guestResults(testId) {
       return check(await sb.from('guest_attempts').select('id, name, score, max_score, created_at').eq('test_id', testId).order('created_at', { ascending: false }).limit(500)) as any;

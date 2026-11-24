@@ -2,7 +2,7 @@ import type {
   Achievement, AdminStats, Book, Comic, ContentInput, DailyChallenge, Game, GameResult, ItemType,
   LeaderRow, MyStats, Notification, Profile, ReadingProgress, RewardResult, Settings, SignUpInput,
   StudentDetail, StudentRow, ProfilePatch, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
-  Test, TestResultRow, TestAnswer, TestQuestion, PublicTest, GuestResult, GuestResultRow, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
+  Test, TestResultRow, TestAnswer, TestQuestion, PublicTest, GuestResult, GuestResultRow, TestOverview, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
   Suggestion, SuggestionInput,
 } from './types';
 
@@ -60,6 +60,8 @@ export interface Api {
   /** Admin: replace the share link (the old one stops working). Returns the new code. */
   adminNewShareCode(testId: string): Promise<string>;
   guestResults(testId: string): Promise<GuestResultRow[]>;
+  /** Admin: all results (students + guests), averages and most-missed questions. */
+  testOverview(testId: string): Promise<TestOverview>;
   deleteGuestResult(id: string): Promise<void>;
 
   // surveys shared by link — work without an account

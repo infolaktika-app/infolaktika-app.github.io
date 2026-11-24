@@ -69,5 +69,6 @@ grant execute on function public.public_test(text) to anon, authenticated;
 grant execute on function public.submit_public_test(text, text, jsonb) to anon, authenticated;
 grant execute on function public.public_test_result(text, uuid) to anon, authenticated;
 grant execute on function public.admin_new_share_code(uuid) to authenticated;
+grant execute on function public.admin_test_overview(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

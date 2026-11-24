@@ -238,6 +238,11 @@ export interface GuestResult {
   answers: TestAnswer[]; correct: TestCorrect[]; explain?: (string | null)[]; created_at?: string;
 }
 
+/** Everyone who took a survey (students + link guests), and per-question stats. */
+export interface TestOverviewRow { kind: 'student' | 'guest'; id: string; name: string; avatar: string | null; stream: string | null; score: number; max_score: number; created_at: string }
+export interface TestQuestionStat { index: number; q: string; type: QuestionType; options: string[]; correct: TestCorrect; total: number; right: number; picks: number[] }
+export interface TestOverview { rows: TestOverviewRow[]; questions: TestQuestionStat[] }
+
 export interface GuestResultRow { id: string; name: string; score: number; max_score: number; created_at: string }
 
 export interface MyTestRow {

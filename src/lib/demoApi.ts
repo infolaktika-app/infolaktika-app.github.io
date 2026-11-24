@@ -534,6 +534,27 @@ export async function createDemoApi(): Promise<Api> {
       }
       save();
     },
+    async testOverview(testId) {
+      admin();
+      const t = db.tests.find((x) => x.id === testId);
+      if (!t) throw new Error('test not found');
+      const all = [
+        ...db.attempts.filter((a) => a.test_id === testId).map((a) => {
+          const u = db.users.find((x) => x.id === a.user_id);
+          return { kind: 'student' as const, id: a.user_id, name: u ? `${u.first_name} ${u.last_name}` : '—', avatar: u?.avatar ?? null, stream: u?.stream ?? null,
+            score: a.score, max_score: a.max_score, created_at: a.created_at, answers: a.answers };
+        }),
+        ...db.guests.filter((g) => g.test_id === testId).map((g) => ({ kind: 'guest' as const, id: g.id, name: g.name, avatar: null, stream: null,
+          score: g.score, max_score: g.max_score, created_at: g.created_at, answers: g.answers })),
+      ];
+      const rows = all.sort((a, b) => b.score - a.score || a.created_at.localeCompare(b.created_at)).map(({ answers: _a, ...r }) => r);
+      const questions = t.questions.map((q, i) => ({
+        index: i, q: q.q, type: q.type ?? 'single', options: q.options, correct: correctOf(q), total: all.length,
+        right: all.filter((a) => sameAnswer(cleanAnswer(q, a.answers[i]), correctOf(q))).length,
+        picks: [0, 1, 2, 3].map((j) => all.filter((a) => { const v = a.answers[i]; return Array.isArray(v) ? v.includes(j) : v === j; }).length),
+      }));
+      return delay({ rows, questions });
+    },
     async adminNewShareCode(testId) {
       admin();
       const t = db.tests.find((x) => x.id === testId);

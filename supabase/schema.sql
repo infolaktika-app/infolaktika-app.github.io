@@ -1238,6 +1238,42 @@ begin
   return c;
 end $$;
 
+-- =====================================================================
+-- 11. v7: one results view per survey — registered students and link guests
+--     together, the average score and the most-missed questions.
+-- =====================================================================
+create or replace function public.admin_test_overview(p_test uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare t tests;
+begin
+  if not is_admin() then raise exception 'forbidden'; end if;
+  select * into t from tests where id = p_test;
+  if t.id is null then raise exception 'test not found'; end if;
+  return jsonb_build_object(
+    'rows', coalesce((select jsonb_agg(r order by (r->>'score')::int desc, r->>'created_at') from (
+        select jsonb_build_object('kind', 'student', 'id', a.user_id, 'name', trim(p.first_name || ' ' || p.last_name), 'avatar', p.avatar,
+                                  'stream', p.stream, 'score', a.score, 'max_score', a.max_score, 'created_at', a.created_at) r
+        from test_attempts a join profiles p on p.id = a.user_id where a.test_id = p_test
+        union all
+        select jsonb_build_object('kind', 'guest', 'id', g.id, 'name', g.name, 'avatar', null, 'stream', null,
+                                  'score', g.score, 'max_score', g.max_score, 'created_at', g.created_at)
+        from guest_attempts g where g.test_id = p_test) x), '[]'::jsonb),
+    'questions', coalesce((select jsonb_agg(jsonb_build_object(
+        'index', i - 1, 'q', q->>'q', 'type', coalesce(q->>'type', 'single'), 'options', q->'options', 'correct', _q_correct(q),
+        'total', st.total, 'right', st.right_n,
+        'picks', (select jsonb_agg((select count(*) from (
+                     select answers from test_attempts where test_id = p_test union all select answers from guest_attempts where test_id = p_test) z
+                   where z.answers->(i::int - 1) = to_jsonb(j) or (jsonb_typeof(z.answers->(i::int - 1)) = 'array' and z.answers->(i::int - 1) @> to_jsonb(array[j])))
+                  order by j) from generate_series(0, 3) j)
+      ) order by i)
+      from jsonb_array_elements(t.questions) with ordinality x(q, i)
+      cross join lateral (
+        select count(*) as total,
+               count(*) filter (where _q_clean(q, z.answers->(i::int - 1)) = _q_correct(q)) as right_n
+        from (select answers from test_attempts where test_id = p_test union all select answers from guest_attempts where test_id = p_test) z
+      ) st), '[]'::jsonb));
+end $$;
+
 -- ---------------------------------------------------------------
 -- INFOLAKTIKA: Data API рұқсаттары.
 -- Жаңа Supabase жобаларында public кестелері anon/authenticated рөлдеріне
@@ -1310,5 +1346,6 @@ grant execute on function public.public_test(text) to anon, authenticated;
 grant execute on function public.submit_public_test(text, text, jsonb) to anon, authenticated;
 grant execute on function public.public_test_result(text, uuid) to anon, authenticated;
 grant execute on function public.admin_new_share_code(uuid) to authenticated;
+grant execute on function public.admin_test_overview(uuid) to authenticated;
 
 notify pgrst, 'reload schema';

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IChevL, ICopy, IEdit, ILink, IPlus, IRefresh, ISparkle, ITrash } from '../components/Icons';
-import { Avatar, Confirm, Empty, Modal, PageLoader, ProgressBar, Spinner, StatCard } from '../components/ui';
+import { Avatar, Confirm, Empty, Modal, PageLoader, ProgressBar, Spinner, StatCard, Tabs } from '../components/ui';
 import { friendlyError } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { formatDate, timeAgo } from '../lib/constants';
@@ -317,19 +317,24 @@ export function TestEditor({ id }: { id?: string }) {
 
 export function TestResults({ id }: { id: string }) {
   const { api } = useSession();
-  const test = useAsync(() => api.adminTests().then((l) => l.find((t) => t.id === id) ?? null), [id]);
-  const res = useAsync(() => api.testResults(id), [id]);
-  const students = useAsync(() => api.adminUsers(), []);
-  const guests = useAsync(() => api.guestResults(id), [id]);
   const toast = useToast();
+  const test = useAsync(() => api.adminTests().then((l) => l.find((t) => t.id === id) ?? null), [id]);
+  const ov = useAsync(() => api.testOverview(id), [id]);
   const [delGuest, setDelGuest] = useState<string | null>(null);
-  if (test.loading || res.loading) return <PageLoader />;
+  const [open, setOpen] = useState<number | null>(null);
+  const [tab, setTab] = useState<'list' | 'analysis'>('list');
+  if ((test.loading && !test.data) || (ov.loading && !ov.data)) return <PageLoader />;
   const t = test.data;
   if (!t) return <Empty title="Сауалнама табылмады" action={<Link to="/admin/tests" className="btn btn-primary">Сауалнамаларға</Link>} />;
-  const rows = res.data ?? [];
-  const done = new Set(rows.map((r) => r.user_id));
-  const missing = (students.data ?? []).filter((s) => !done.has(s.id) && !s.is_blocked);
-  const avg = rows.length ? Math.round((rows.reduce((s, r) => s + r.score / r.max_score, 0) / rows.length) * 100) : null;
+  const rows = ov.data?.rows ?? [];
+  const guests = rows.filter((r) => r.kind === 'guest').length;
+  const avgScore = rows.length ? rows.reduce((s, r) => s + r.score, 0) / rows.length : null;
+  const avgPct = rows.length ? Math.round((rows.reduce((s, r) => s + r.score / (r.max_score || 1), 0) / rows.length) * 100) : null;
+  const n = t.questions.length;
+  // most-missed first: by share of wrong answers
+  const qstats = [...(ov.data?.questions ?? [])].filter((q) => q.total > 0)
+    .map((q) => ({ ...q, wrong: q.total - q.right, rate: (q.total - q.right) / q.total }))
+    .sort((a, b) => b.rate - a.rate || a.index - b.index);
 
   return (
     <div className="space-y-6">
@@ -337,71 +342,108 @@ export function TestResults({ id }: { id: string }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{t.title}</h1>
-          <p className="mt-1 text-ink/55">{t.questions.length} сұрақ · {formatDate(t.created_at)}</p>
+          <p className="mt-1 text-ink/55">{n} сұрақ · {formatDate(t.created_at)}</p>
         </div>
         <Link to={`/admin/tests/${t.id}/edit`} className="btn btn-soft btn-sm self-start sm:self-auto"><IEdit className="h-4 w-4" /> Өңдеу</Link>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-        <StatCard icon="✅" label="Тапсырды" value={rows.length} tone="#5E9A45" />
-        <StatCard icon="⏳" label="Тапсырмады" value={missing.length} tone="#2A6B7F" />
-        <div className="col-span-2 lg:col-span-1"><StatCard icon="🎯" label="Орташа нәтиже" value={avg == null ? '—' : `${avg}%`} tone="#2683A3" /></div>
-      </div>
-      <section>
-        <h2 className="mb-3 font-extrabold">Нәтижелер</h2>
+
+      <Tabs value={tab} onChange={setTab} items={[{ value: 'list', label: `Тапсырғандар (${rows.length})` }, { value: 'analysis', label: 'Анализ' }]} />
+
+      {tab === 'list' && <section>
+        {rows.length > 0 && (
+          <p className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-ink/55">
+            <span>⭐ Орташа балл: <b className="text-ink">{avgScore!.toFixed(1).replace('.0', '')} / {n}</b> ({avgPct}%)</span>
+            {guests > 0 && <span>Оның ішінде {guests} қонақ (сілтеме арқылы)</span>}
+          </p>
+        )}
         {rows.length === 0 ? <div className="card p-6 text-center text-ink/50">Әзірге ешкім тапсырмаған.</div> : (
           <div className="card divide-y divide-haze">
             {rows.map((r, i) => (
-              <div key={r.user_id} className="flex items-center gap-3 p-4 sm:px-6">
+              <div key={r.kind + r.id} className="flex items-center gap-3 p-4 sm:px-6">
                 <span className="w-6 shrink-0 text-center font-extrabold text-ink/40">{i + 1}</span>
-                <Avatar id={r.avatar} size={40} />
+                {r.kind === 'student' ? <Avatar id={r.avatar ?? 'robot-1'} size={40} />
+                  : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-mist font-extrabold text-ink/50">{r.name.slice(0, 1).toUpperCase()}</span>}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-extrabold">{r.first_name} {r.last_name}</p>
-                  <p className="truncate text-xs text-ink/45">{r.stream ? `${r.stream} поток · ` : ''}{timeAgo(r.created_at)}</p>
-                  <ProgressBar value={(r.score / r.max_score) * 100} className="mt-1.5 !h-1.5 max-w-48" tone="sun" />
+                  <p className="truncate font-extrabold">{r.name}</p>
+                  <p className="truncate text-xs text-ink/45">{r.kind === 'guest' ? 'қонақ (сілтеме арқылы)' : r.stream ? `${r.stream} поток` : 'оқушы'} · {timeAgo(r.created_at)}</p>
+                  <ProgressBar value={(r.score / (r.max_score || 1)) * 100} className="mt-1.5 !h-1.5 max-w-48" tone="sun" />
                 </div>
                 <span className="chip shrink-0 bg-sun/30 text-ink">{r.score}/{r.max_score}</span>
+                {r.kind === 'guest'
+                  ? <button className="icon-btn !h-9 !w-9 shrink-0 hover:!text-rose-500" onClick={() => setDelGuest(r.id)} aria-label="Нәтижені жою"><ITrash className="h-4 w-4" /></button>
+                  : <span className="hidden w-9 shrink-0 sm:block" />}
               </div>
             ))}
           </div>
         )}
-      </section>
+      </section>}
+
+      {tab === 'analysis' && (
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+        <StatCard icon="✅" label="Тапсырды" value={rows.length} tone="#5E9A45" />
+        <StatCard icon="⭐" label="Орташа балл" value={avgScore == null ? '—' : `${avgScore.toFixed(1).replace('.0', '')} / ${n}`} tone="#2A6B7F" />
+        <div className="col-span-2 lg:col-span-1"><StatCard icon="🎯" label="Орташа нәтиже" value={avgPct == null ? '—' : `${avgPct}%`} tone="#2683A3" /></div>
+      </div>
+
+                    <p className="mb-3 text-sm text-ink/50">Сұрақтар ең көп қателескеннен бастап реттелген. Сұрақты ашсаңыз, қай нұсқаны қанша адам таңдағанын көресіз.</p>
+          {qstats.length === 0 ? <div className="card p-6 text-center text-ink/50">Анализ үшін әзірге ешкім тапсырмаған.</div> : (
+          <div className="card divide-y divide-haze">
+            {qstats.map((q) => {
+              const pct = Math.round(q.rate * 100);
+              const isOpen = open === q.index;
+              const tone = pct >= 50 ? 'bg-rose-500' : pct >= 25 ? 'bg-amber-400' : 'bg-emerald-500';
+              return (
+                <div key={q.index}>
+                  <button className="flex w-full items-center gap-3 p-4 text-left sm:px-6" onClick={() => setOpen(isOpen ? null : q.index)} aria-expanded={isOpen}>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-mist text-sm font-extrabold text-ink/60">{q.index + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 font-bold leading-snug [overflow-wrap:anywhere]">{q.q}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="h-2 max-w-56 flex-1 overflow-hidden rounded-full bg-mist"><div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.max(pct, 2)}%` }} /></div>
+                        <span className="shrink-0 text-xs font-bold text-ink/55">{q.wrong} / {q.total} қате</span>
+                      </div>
+                    </div>
+                    <span className={`chip shrink-0 ${pct >= 50 ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200' : pct >= 25 ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'}`}>{pct}%</span>
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-2 px-4 pb-5 sm:px-6 sm:pl-[72px]">
+                      {q.type === 'multi' && <p className="text-xs font-semibold text-ink/45">Бірнеше жауапты сұрақ: бір адам бірнеше нұсқа таңдай алады.</p>}
+                      {q.options.map((o, j) => {
+                        const right = Array.isArray(q.correct) ? q.correct.includes(j) : q.correct === j;
+                        const share = q.total ? Math.round((q.picks[j] / q.total) * 100) : 0;
+                        return (
+                          <div key={j} className={`relative overflow-hidden rounded-xl px-3 py-2 text-sm ring-1 ${right ? 'ring-emerald-300' : 'ring-haze'}`}>
+                            <div className={`absolute inset-y-0 left-0 ${right ? 'bg-emerald-100 dark:bg-emerald-500/20' : 'bg-mist'}`} style={{ width: `${share}%` }} />
+                            <div className="relative flex items-center gap-2">
+                              <span className="font-extrabold text-ink/50">{LETTERS[j]}</span>
+                              <span className="min-w-0 flex-1 truncate font-semibold">{o}</span>
+                              {right && <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">дұрыс ✓</span>}
+                              <span className="shrink-0 text-xs font-bold text-ink/55">{q.picks[j]} адам · {share}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          )}
+        </section>
+      )}
+
       <section className="card p-5 sm:p-6">
         <h2 className="mb-3 flex items-center gap-2 font-extrabold"><ILink className="h-5 w-5 text-brand" /> Сілтемемен бөлісу</h2>
         <SharePanel test={t} onChange={(nt) => test.setData(nt)} />
       </section>
-      {(guests.data?.length ?? 0) > 0 && (
-        <section>
-          <h2 className="mb-3 font-extrabold">Сілтеме арқылы тапсырғандар ({guests.data!.length})</h2>
-          <div className="card divide-y divide-haze">
-            {guests.data!.map((g) => (
-              <div key={g.id} className="flex items-center gap-3 p-4 sm:px-6">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-mist font-extrabold text-ink/50">{g.name.slice(0, 1).toUpperCase()}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-extrabold">{g.name} <span className="chip ml-1 bg-mist !px-2 !py-0.5 text-[11px] text-ink/50">қонақ</span></p>
-                  <p className="truncate text-xs text-ink/45">{timeAgo(g.created_at)}</p>
-                  <ProgressBar value={(g.score / g.max_score) * 100} className="mt-1.5 !h-1.5 max-w-48" tone="sun" />
-                </div>
-                <span className="chip shrink-0 bg-sun/30 text-ink">{g.score}/{g.max_score}</span>
-                <button className="icon-btn !h-9 !w-9 shrink-0 hover:!text-rose-500" onClick={() => setDelGuest(g.id)} aria-label="Нәтижені жою"><ITrash className="h-4 w-4" /></button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+
       <Confirm open={!!delGuest} onClose={() => setDelGuest(null)} title="Бұл нәтиже жойылсын ба?" text="Сілтеме арқылы тапсырылған нәтиже жойылады."
         onConfirm={async () => {
-          try { await api.deleteGuestResult(delGuest!); setDelGuest(null); guests.reload(); toast.success('Жойылды'); }
+          try { await api.deleteGuestResult(delGuest!); setDelGuest(null); ov.reload(); toast.success('Жойылды'); }
           catch (e) { toast.error(friendlyError(e)); }
         }} />
-      {missing.length > 0 && (
-        <section>
-          <h2 className="mb-3 font-extrabold">Әлі тапсырмағандар ({missing.length})</h2>
-          <div className="flex flex-wrap gap-2">
-            {missing.slice(0, 60).map((s) => <span key={s.id} className="chip bg-card !px-3 !py-1.5 text-sm text-ink/70 shadow-[0_2px_0_var(--edge)]">{s.first_name} {s.last_name}{s.stream ? ` · ${s.stream}` : ''}</span>)}
-            {missing.length > 60 && <span className="chip bg-mist !px-3 !py-1.5 text-sm text-ink/50">+{missing.length - 60}</span>}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
