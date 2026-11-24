@@ -126,6 +126,8 @@ export function friendlyError(e: unknown): string {
   if (/test already answered/i.test(msg)) return 'Бұл сауалнама бұрын тапсырылған.';
   if (/test not found/i.test(msg)) return 'Сауалнама табылмады.';
   if (/ai not configured/i.test(msg)) return 'ИИ әлі қосылмаған: Supabase-та AI кілтін орнату керек.';
+  if (/Gemini 429|quota/i.test(msg)) return 'ИИ лимиті уақытша бітті. 1–2 минуттан кейін қайталаңыз.';
+  if (/Gemini 503|high demand|overloaded/i.test(msg)) return 'ИИ қазір бос емес. Бірнеше секундтан кейін қайталаңыз.';
   if (/ai error|Failed to send a request to the Edge Function|Edge Function returned/i.test(msg)) return 'ИИ түсіндірмесін алу мүмкін болмады. Кейінірек қайталаңыз.';
   if (/multi-answer/i.test(msg)) return 'Бірнеше жауапты сұрақта кемінде бір дұрыс жауап белгіленуі керек.';
   if (/invalid question|questions/i.test(msg)) return 'Әр сұрақта мәтін, 4 жауап нұсқасы және дұрыс жауап болуы керек.';

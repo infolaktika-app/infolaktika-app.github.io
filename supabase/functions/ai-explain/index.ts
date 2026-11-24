@@ -65,30 +65,34 @@ async function generate(q: Q): Promise<string> {
   const claude = Deno.env.get('ANTHROPIC_API_KEY');
   let text = '';
   if (gemini) {
-    // Try the configured model first, then current Flash models (names change over time).
-    const models = [...new Set([Deno.env.get('AI_MODEL'), 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'].filter(Boolean))] as string[];
+    // Try the configured model first, then Flash-Lite models (largest free quota, plenty for 2–3 sentences),
+    // then Flash. A busy (503) or out-of-quota (429) model just moves on to the next one — each has its own quota.
+    const models = [...new Set([Deno.env.get('AI_MODEL'), 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite',
+      'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean))] as string[];
     let last = '';
     for (const model of models) {
       // Short answers need no "thinking": turn it down, otherwise Flash models think for 5–15 s first.
       const thinking = /2\.5/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
-      for (const cfg of [{ temperature: 0.3, maxOutputTokens: 600, thinkingConfig: thinking }, { temperature: 0.3 }]) {
+      const tries = [{ temperature: 0.3, maxOutputTokens: 600, thinkingConfig: thinking }, { temperature: 0.3 }];
+      for (let k = 0; k < tries.length; k++) {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gemini.trim() },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: p.system }] },
             contents: [{ role: 'user', parts: [{ text: p.user }] }],
-            generationConfig: cfg,
+            generationConfig: tries[k],
           }),
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok) { text = (d?.candidates?.[0]?.content?.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? '').join(''); break; }
         last = `Gemini ${r.status} (${model}): ${d?.error?.message ?? r.statusText}`;
         console.error(last);
-        if (r.status !== 400) break;          // 400 = this model rejects the thinking setting → retry plainly
+        if (r.status === 503 && k === 0) { await new Promise((res) => setTimeout(res, 1200)); continue; }  // brief retry when busy
+        if (r.status !== 400) break;          // 400 = model rejects the thinking setting → retry plainly
       }
       if (text) break;
-      if (!/Gemini (404|400)/.test(last)) break;   // wrong key / quota: other models won't help
+      if (/Gemini (401|403)/.test(last)) break;   // bad key: other models won't help
     }
     if (!text) throw new Error(`ai error: ${last}`);
   } else if (claude) {

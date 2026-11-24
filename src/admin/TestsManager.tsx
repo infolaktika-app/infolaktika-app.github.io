@@ -129,9 +129,9 @@ export function TestEditor({ id }: { id?: string }) {
     if (!todo.length) return toast.success('Барлық толық сұрақта түсіндірме бар');
     setAiAll(true);
     let ok = 0, failed = false, next = 0;
-    // 3 questions at a time instead of one by one
+    // 2 at a time: faster than one by one, but stays under the free per-minute limit
     const worker = async () => { while (!failed && next < todo.length) { const i = todo[next++]; if (await aiOne(i)) ok++; else failed = true; } };
-    await Promise.all([worker(), worker(), worker()]);
+    await Promise.all([worker(), worker()]);
     setAiAll(false);
     if (ok) toast.success(`ИИ ${ok} түсіндірме жазды`, 'Тексеріп, қажет болса түзетіңіз');
   };
