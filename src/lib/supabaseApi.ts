@@ -30,10 +30,19 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
 
   // "ai-explain" Edge Function (supabase/functions/ai-explain). Returns the explanation text.
   async function invokeAi(body: Record<string, unknown>): Promise<string> {
-    const { data, error } = await sb.functions.invoke('ai-explain', { body });
+    const { data, error } = await Promise.race([
+      sb.functions.invoke('ai-explain', { body }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('ai error: жауап 45 секундта келмеді, қайталап көріңіз')), 45000)),
+    ]);
     if (error) {
       let msg = error.message;
-      try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep message */ }
+      const ctx = (error as any).context;
+      try {
+        const j = await ctx?.json?.();
+        if (j?.error) msg = j.error;
+        else if (j?.message) msg = `ai error: ${ctx?.status ?? ''} ${j.message}`;   // e.g. gateway "Invalid JWT"
+      } catch { if (ctx?.status) msg = `ai error: HTTP ${ctx.status}`; }
+      if (/Failed to send a request/i.test(msg)) msg = 'ai error: функция табылмады немесе қолжетімсіз (ai-explain деп Deploy жасалды ма?)';
       throw new Error(msg);
     }
     if (!data?.explain) throw new Error('ai error: empty answer');

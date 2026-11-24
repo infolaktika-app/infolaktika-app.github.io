@@ -12,9 +12,10 @@
 // Optional: AI_MODEL to override the model name.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const cors = {
+// Allow whatever headers the browser asks for (supabase-js adds new ones over time).
+let cors: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-api-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (body: unknown, status = 200) =>
@@ -64,25 +65,38 @@ async function generate(q: Q): Promise<string> {
   const claude = Deno.env.get('ANTHROPIC_API_KEY');
   let text = '';
   if (gemini) {
-    const model = Deno.env.get('AI_MODEL') ?? 'gemini-3.5-flash';
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gemini },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: p.system }] },
-        contents: [{ role: 'user', parts: [{ text: p.user }] }],
-        generationConfig: { temperature: 0.3 },
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(`ai error: ${d?.error?.message ?? r.status}`);
-    text = (d?.candidates?.[0]?.content?.parts ?? []).map((x: any) => x.text ?? '').join('');
+    // Try the configured model first, then current Flash models (names change over time).
+    const models = [...new Set([Deno.env.get('AI_MODEL'), 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'].filter(Boolean))] as string[];
+    let last = '';
+    for (const model of models) {
+      // Short answers need no "thinking": turn it down, otherwise Flash models think for 5–15 s first.
+      const thinking = /2\.5/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
+      for (const cfg of [{ temperature: 0.3, maxOutputTokens: 600, thinkingConfig: thinking }, { temperature: 0.3 }]) {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gemini.trim() },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: p.system }] },
+            contents: [{ role: 'user', parts: [{ text: p.user }] }],
+            generationConfig: cfg,
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { text = (d?.candidates?.[0]?.content?.parts ?? []).filter((x: any) => !x.thought).map((x: any) => x.text ?? '').join(''); break; }
+        last = `Gemini ${r.status} (${model}): ${d?.error?.message ?? r.statusText}`;
+        console.error(last);
+        if (r.status !== 400) break;          // 400 = this model rejects the thinking setting → retry plainly
+      }
+      if (text) break;
+      if (!/Gemini (404|400)/.test(last)) break;   // wrong key / quota: other models won't help
+    }
+    if (!text) throw new Error(`ai error: ${last}`);
   } else if (claude) {
     const model = Deno.env.get('AI_MODEL') ?? 'claude-haiku-5-5';
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': claude, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 400, system: p.system, messages: [{ role: 'user', content: p.user }] }),
+      body: JSON.stringify({ model, max_tokens: 500, system: p.system, messages: [{ role: 'user', content: p.user }] }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(`ai error: ${d?.error?.message ?? r.status}`);
@@ -96,13 +110,15 @@ async function generate(q: Q): Promise<string> {
 }
 
 Deno.serve(async (req) => {
+  const asked = req.headers.get('access-control-request-headers');
+  if (asked) cors = { ...cors, 'Access-Control-Allow-Headers': asked };
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   try {
     const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey(), { auth: { persistSession: false } });
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     const { data: au } = await db.auth.getUser(jwt);
-    if (!au?.user) return json({ error: 'not authenticated' }, 401);
+    if (!au?.user) return json({ error: 'ai error: not authenticated (сайтқа қайта кіріңіз)' }, 401);
     const { data: me } = await db.from('profiles').select('role, is_blocked').eq('id', au.user.id).single();
     if (!me || me.is_blocked) return json({ error: 'forbidden' }, 403);
     const isAdmin = me.role === 'admin';

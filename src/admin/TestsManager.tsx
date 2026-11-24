@@ -117,7 +117,8 @@ export function TestEditor({ id }: { id?: string }) {
       setQs((x) => x.map((qq, k) => (k === i ? { ...qq, explain: text } : qq)));
       return true;
     } catch (e) {
-      toast.error(friendlyError(e));
+      const raw = ((e as any)?.message ?? String(e)).replace(/^ai error:\s*/i, '');
+      toast.error(friendlyError(e), raw.slice(0, 220));   // admin sees the technical reason
       return false;
     } finally {
       setAiBusy((x) => { const n = new Set(x); n.delete(i); return n; });
@@ -127,8 +128,10 @@ export function TestEditor({ id }: { id?: string }) {
     const todo = qs.map((q, i) => i).filter((i) => !qs[i].explain?.trim() && !problems[i]);
     if (!todo.length) return toast.success('Барлық толық сұрақта түсіндірме бар');
     setAiAll(true);
-    let ok = 0;
-    for (const i of todo) { if (!(await aiOne(i))) break; ok++; }
+    let ok = 0, failed = false, next = 0;
+    // 3 questions at a time instead of one by one
+    const worker = async () => { while (!failed && next < todo.length) { const i = todo[next++]; if (await aiOne(i)) ok++; else failed = true; } };
+    await Promise.all([worker(), worker(), worker()]);
     setAiAll(false);
     if (ok) toast.success(`ИИ ${ok} түсіндірме жазды`, 'Тексеріп, қажет болса түзетіңіз');
   };
