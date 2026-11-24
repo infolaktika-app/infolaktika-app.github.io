@@ -11,8 +11,9 @@ import { staticUrl } from './api';
 import { levelFor, todayKZ } from './constants';
 import type {
   Achievement, Book, Comic, ContentInput, EarnedAchievement, Game, GameResult, ItemType,
-  Material, Notification, Profile, ReadingProgress, RewardResult, Role, Settings, Suggestion, Test,
+  Material, Notification, Profile, ReadingProgress, RewardResult, Role, Settings, Suggestion, Test, TestAnswer, TestQuestion,
 } from './types';
+import { cleanAnswer, correctOf, demoExplain, sameAnswer } from './testLogic';
 
 interface DemoUser extends Profile { salt: string; hash: string }
 interface DB {
@@ -30,13 +31,13 @@ interface DB {
   notifications: (Notification & { user_id: string })[];
   settings: Settings;
   tests: Test[];
-  attempts: { test_id: string; user_id: string; score: number; max_score: number; answers: (number | null)[]; created_at: string }[];
+  attempts: { test_id: string; user_id: string; score: number; max_score: number; answers: TestAnswer[]; created_at: string }[];
   materials: Omit<Material, 'url'>[];
   reviews: { comic_id: string; user_id: string; rating: number; comment: string; updated_at: string }[];
   suggestions: Suggestion[];
 }
 
-const KEY = 'infolaktika-demo-v5';
+const KEY = 'infolaktika-demo-v6';
 const listeners = new Set<() => void>();
 const uuid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -100,12 +101,17 @@ async function makeUser(first: string, last: string, username: string, pw: strin
   };
 }
 
-const SAMPLE_TEST = [
-  { q: 'Python-да экранға мәтін шығаратын функция қайсы?', options: ['input()', 'print()', 'len()', 'str()'], answer: 1 },
-  { q: '1 байт неше биттен тұрады?', options: ['4', '16', '8', '2'], answer: 2 },
-  { q: 'HTML-де ең үлкен тақырып тегі қайсы?', options: ['<h6>', '<head>', '<title>', '<h1>'], answer: 3 },
+const SAMPLE_TEST: TestQuestion[] = [
+  { q: 'Python-да экранға мәтін шығаратын функция қайсы?', options: ['input()', 'print()', 'len()', 'str()'], answer: 1,
+    explain: 'print() берілген мәнді экранға шығарады. input() керісінше пайдаланушыдан мәлімет сұрайды, len() ұзындықты санайды, ал str() мәнді мәтінге айналдырады, бірақ ештеңе көрсетпейді.' },
+  { q: '1 байт неше биттен тұрады?', options: ['4', '16', '8', '2'], answer: 2,
+    explain: 'Байт — 8 биттен тұратын ақпарат бірлігі, сондықтан бір байтпен 256 түрлі мән жазуға болады. 4 бит — жарты байт, ал 16 бит екі байтқа тең.' },
+  { q: 'HTML-де ең үлкен тақырып тегі қайсы?', options: ['<h6>', '<head>', '<title>', '<h1>'], answer: 3,
+    explain: '<h1> ең маңызды әрі ең үлкен тақырып, саны өскен сайын (<h2>…<h6>) тақырып кішірейеді. <head> бет туралы қызметтік мәліметті сақтайды, ал <title> браузер қойындысындағы атауды береді.' },
   { q: 'Алгоритм дегеніміз не?', options: ['Нақты әрекеттер тізбегі', 'Компьютер бөлігі', 'Бағдарлама тілі', 'Файл түрі'], answer: 0 },
   { q: 'Қай құпиясөз ең сенімді?', options: ['123456', 'qwerty', 'K7#m!pQ2z', 'aruzhan'], answer: 2 },
+  { q: 'Қайсылары бағдарламалау тілі? (бірнеше жауап)', options: ['Python', 'Microsoft Word', 'JavaScript', 'PNG'], type: 'multi', answer: 0, answers: [0, 2],
+    explain: 'Python мен JavaScript — компьютерге нұсқау жазатын бағдарламалау тілдері. Microsoft Word — мәтін теретін бағдарлама, ал PNG — сурет файлының пішімі, олармен бағдарлама жазылмайды.' },
 ];
 
 async function freshDb(): Promise<DB> {
@@ -152,9 +158,13 @@ async function freshDb(): Promise<DB> {
   };
   db.tests.push(test);
   db.users.filter((u) => u.role === 'student').slice(0, 3).forEach((u, i) => {
-    const answers = SAMPLE_TEST.map((q, j) => (j < 4 - i ? q.answer : (q.answer + 1) % 4));
-    const score = answers.filter((a, j) => a === SAMPLE_TEST[j].answer).length;
-    db.attempts.push({ test_id: test.id, user_id: u.id, score, max_score: 5, answers, created_at: created(2 - i * 0.3) });
+    const answers: TestAnswer[] = SAMPLE_TEST.map((q, j) => {
+      const c = correctOf(q);
+      if (j < 4 - i) return c;
+      return Array.isArray(c) ? [c[0]] : (c + 1) % 4;
+    });
+    const score = answers.filter((a, j) => sameAnswer(a, correctOf(SAMPLE_TEST[j]))).length;
+    db.attempts.push({ test_id: test.id, user_id: u.id, score, max_score: SAMPLE_TEST.length, answers, created_at: created(2 - i * 0.3) });
   });
   db.materials.push({
     id: uuid(), author_id: adminUser.id, author_name: 'Әкімші', title: 'Python: алғашқы бағдарлама чек-листі',
@@ -390,8 +400,9 @@ export async function createDemoApi(): Promise<Api> {
       if (!t || (!a && !t.published && u.role !== 'admin')) throw new Error('test not found');
       return delay({
         id: t.id, title: t.title, description: t.description,
-        questions: t.questions.map((q) => ({ q: q.q, options: q.options })),
-        attempt: a ? { score: a.score, max_score: a.max_score, answers: a.answers, created_at: a.created_at, correct: t.questions.map((q) => q.answer) } : null,
+        questions: t.questions.map((q) => ({ q: q.q, options: q.options, type: q.type ?? 'single' })),
+        attempt: a ? { score: a.score, max_score: a.max_score, answers: a.answers, created_at: a.created_at,
+          correct: t.questions.map(correctOf), explain: t.questions.map((q) => q.explain || null) } : null,
       });
     },
     async submitTest(id, answers) {
@@ -400,15 +411,26 @@ export async function createDemoApi(): Promise<Api> {
       const t = db.tests.find((x) => x.id === id && x.published);
       if (!t) throw new Error('test not found');
       if (db.attempts.some((a) => a.test_id === id && a.user_id === u.id)) throw new Error('test already answered');
-      const clean = t.questions.map((_, i) => (typeof answers[i] === 'number' ? answers[i] : null));
-      const score = clean.filter((a, i) => a === t.questions[i].answer).length;
+      const clean = t.questions.map((q, i) => cleanAnswer(q, answers[i]));
+      const score = clean.filter((a, i) => sameAnswer(a, correctOf(t.questions[i]))).length;
       db.attempts.push({ test_id: id, user_id: u.id, score, max_score: t.questions.length, answers: clean, created_at: now() });
       const xp = score * 10;
       award(u, xp, 'test', t.title);
       touch(u);
       const achievements = checkAchievements(u);
       save();
-      return { score, max_score: t.questions.length, xp, bonus: 0, achievements, correct: t.questions.map((q) => q.answer) };
+      return { score, max_score: t.questions.length, xp, bonus: 0, achievements,
+        correct: t.questions.map(correctOf), explain: t.questions.map((q) => q.explain || null) };
+    },
+    async explainQuestion(testId, index) {
+      const u = me();
+      const t = db.tests.find((x) => x.id === testId);
+      const q = t?.questions[index];
+      if (!t || !q) throw new Error('test not found');
+      if (u.role !== 'admin' && !db.attempts.some((a) => a.test_id === testId && a.user_id === u.id)) throw new Error('forbidden');
+      if (!q.explain) { q.explain = demoExplain(q); save(); }
+      await new Promise((r) => setTimeout(r, 900));
+      return q.explain;
     },
     async testRating() {
       me();
@@ -487,12 +509,20 @@ export async function createDemoApi(): Promise<Api> {
     async saveTest(t) {
       const u = admin();
       const qs = t.questions;
-      if (!qs.length || qs.length > 50 || qs.some((q) => !q.q.trim() || q.options.length !== 4 || q.options.some((o) => !o.trim()) || !(q.answer >= 0 && q.answer <= 3)))
+      if (!qs.length || qs.length > 50 || qs.some((q) => !q.q.trim() || q.options.length !== 4 || q.options.some((o) => !o.trim())
+        || (q.type === 'multi' ? !(q.answers?.length && q.answers.every((a) => a >= 0 && a <= 3)) : !(q.answer >= 0 && q.answer <= 3))))
         throw new Error('invalid question');
       const row = { title: t.title.trim(), description: t.description.trim(), questions: qs, published: t.published, updated_at: now() };
       const existing = t.id ? db.tests.find((x) => x.id === t.id) : undefined;
       if (t.id && !existing) throw new Error('test not found');
       if (existing) {
+        // same rule as the database: an unchanged explanation of a changed question is dropped
+        row.questions = qs.map((q, i) => {
+          const o = existing.questions[i];
+          const changed = o && (o.q !== q.q || JSON.stringify(o.options) !== JSON.stringify(q.options) || (o.type ?? 'single') !== (q.type ?? 'single')
+            || JSON.stringify(correctOf(o)) !== JSON.stringify(correctOf(q)));
+          return changed && q.explain && q.explain === o.explain ? { ...q, explain: null } : q;
+        });
         const wasPublished = existing.published;
         Object.assign(existing, row);
         if (row.published && !wasPublished) notifyTest(existing);
@@ -502,6 +532,11 @@ export async function createDemoApi(): Promise<Api> {
         if (nt.published) notifyTest(nt);
       }
       save();
+    },
+    async draftExplain(q) {
+      admin();
+      await new Promise((r) => setTimeout(r, 900));
+      return demoExplain(q);
     },
     async deleteTest(id) {
       admin();

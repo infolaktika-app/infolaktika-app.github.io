@@ -185,7 +185,7 @@ alter table public.profiles add constraint profiles_avatar_check check (
   avatar ~ '^[a-z0-9-]{1,20}$'
   or avatar ~ ('^https://[A-Za-z0-9.:-]+/storage/v1/object/public/avatars/' || id::text || '/[A-Za-z0-9._-]+$'));
 
--- Surveys / tests: 4 options per question, one correct. Students read them only through RPCs (answers stay hidden).
+-- Surveys / tests: 4 options per question, one or several correct (see section 9). Students read them only through RPCs (answers stay hidden).
 create table if not exists public.tests (
   id          uuid primary key default gen_random_uuid(),
   author_id   uuid references public.profiles(id) on delete set null,
@@ -772,19 +772,64 @@ drop function if exists public.admin_set_curator_status(uuid, text);
 drop function if exists public.admin_users();
 
 -- ---------- tests ----------
+-- Question shape: {q, options[4], type: 'single'|'multi' (default single),
+--   single -> answer: 0..3 ; multi -> answers: [distinct 0..3, at least one] ; explain: optional text (shown after the attempt)}
+create or replace function public._q_correct(q jsonb)
+returns jsonb language sql immutable set search_path = public as $$
+  select case when q->>'type' = 'multi'
+    then coalesce((select jsonb_agg(v::int order by v::int) from (select distinct jsonb_array_elements_text(q->'answers') v) x), '[]'::jsonb)
+    else q->'answer' end
+$$;
+
+-- Normalises one submitted answer for a question: number for single, sorted distinct array for multi, else null.
+create or replace function public._q_clean(q jsonb, a jsonb)
+returns jsonb language sql immutable set search_path = public as $$
+  select case
+    when q->>'type' = 'multi' then
+      case when jsonb_typeof(a) = 'array' and jsonb_array_length(a) > 0
+                and not exists (select 1 from jsonb_array_elements(a) e where jsonb_typeof(e) <> 'number' or (e #>> '{}')::numeric not in (0, 1, 2, 3))
+           then (select jsonb_agg(v order by v) from (select distinct (e #>> '{}')::int v from jsonb_array_elements(a) e) x)
+           else 'null'::jsonb end
+    else
+      case when jsonb_typeof(a) = 'number' and (a #>> '{}')::numeric in (0, 1, 2, 3) then a else 'null'::jsonb end
+  end
+$$;
+
 create or replace function public._tests_validate()
 returns trigger language plpgsql set search_path = public as $$
-declare q jsonb; n int;
+declare q jsonb; n int; i int; oq jsonb;
 begin
   if jsonb_typeof(new.questions) <> 'array' then raise exception 'invalid questions'; end if;
   n := jsonb_array_length(new.questions);
   if n < 1 or n > 50 then raise exception 'test must have 1-50 questions'; end if;
-  for q in select * from jsonb_array_elements(new.questions) loop
+  for i in 0 .. n - 1 loop
+    q := new.questions->i;
     if jsonb_typeof(q->'q') <> 'string' or length(trim(q->>'q')) = 0
        or jsonb_typeof(q->'options') <> 'array' or jsonb_array_length(q->'options') <> 4
        or exists (select 1 from jsonb_array_elements(q->'options') o where jsonb_typeof(o) <> 'string' or length(trim(o #>> '{}')) = 0)
-       or jsonb_typeof(q->'answer') <> 'number' or (q->>'answer')::int not between 0 and 3 then
+       or coalesce(q->>'type', 'single') not in ('single', 'multi')
+       or (q ? 'explain' and jsonb_typeof(q->'explain') not in ('string', 'null'))
+       or length(coalesce(q->>'explain', '')) > 2000 then
       raise exception 'invalid question: each question needs text, 4 options and one correct answer';
+    end if;
+    if q->>'type' = 'multi' then
+      if jsonb_typeof(q->'answers') <> 'array' or jsonb_array_length(q->'answers') < 1
+         or exists (select 1 from jsonb_array_elements(q->'answers') e where jsonb_typeof(e) <> 'number' or (e #>> '{}')::numeric not in (0, 1, 2, 3)) then
+        raise exception 'invalid question: multi-answer question needs at least one correct option';
+      end if;
+    elsif jsonb_typeof(q->'answer') <> 'number' or (q->>'answer')::numeric not in (0, 1, 2, 3) then
+      raise exception 'invalid question: each question needs text, 4 options and one correct answer';
+    end if;
+    -- An explanation written for the old wording is wrong for the new one: when the question,
+    -- options or correct answer change but the explanation does not, drop it (it is re-generated on demand).
+    if tg_op = 'UPDATE' and coalesce(q->>'explain', '') <> '' then
+      oq := old.questions->i;
+      if oq is not null and (oq->>'q' <> q->>'q' or oq->'options' <> q->'options' or coalesce(oq->>'type', 'single') <> coalesce(q->>'type', 'single')
+         or _q_correct(oq) <> _q_correct(q)) then
+        if coalesce(oq->>'explain', '') = q->>'explain' then
+          new.questions := jsonb_set(new.questions, array[i::text], q - 'explain');
+        end if;
+      end if;
     end if;
   end loop;
   new.updated_at := now();
@@ -901,16 +946,17 @@ begin
   if a.user_id is null and not t.published and not is_admin() then raise exception 'test not found'; end if;
   return jsonb_build_object(
     'id', t.id, 'title', t.title, 'description', t.description,
-    'questions', (select jsonb_agg(jsonb_build_object('q', q->'q', 'options', q->'options') order by i)
+    'questions', (select jsonb_agg(jsonb_build_object('q', q->'q', 'options', q->'options', 'type', coalesce(q->>'type', 'single')) order by i)
                   from jsonb_array_elements(t.questions) with ordinality x(q, i)),
     'attempt', case when a.user_id is null then null else jsonb_build_object(
       'score', a.score, 'max_score', a.max_score, 'answers', a.answers, 'created_at', a.created_at,
-      'correct', (select jsonb_agg((q->>'answer')::int order by i) from jsonb_array_elements(t.questions) with ordinality x(q, i))) end);
+      'correct', (select jsonb_agg(_q_correct(q) order by i) from jsonb_array_elements(t.questions) with ordinality x(q, i)),
+      'explain', (select jsonb_agg(nullif(q->>'explain', '') order by i) from jsonb_array_elements(t.questions) with ordinality x(q, i))) end);
 end $$;
 
 create or replace function public.submit_test(p_id uuid, p_answers jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare uid uuid := _require_student(); t tests; n int; s int := 0; i int; earned int; ach jsonb; correct jsonb;
+declare uid uuid := _require_student(); t tests; n int; s int := 0; i int; earned int; ach jsonb; clean jsonb := '[]'::jsonb; c jsonb;
 begin
   if (select role from profiles where id = uid) <> 'student' then raise exception 'forbidden'; end if;
   select * into t from tests where id = p_id and published;
@@ -919,17 +965,18 @@ begin
   if jsonb_typeof(p_answers) <> 'array' then raise exception 'invalid answers'; end if;
   n := jsonb_array_length(t.questions);
   for i in 0 .. n - 1 loop
-    if jsonb_typeof(p_answers->i) = 'number' and (p_answers->>i)::int = (t.questions->i->>'answer')::int then s := s + 1; end if;
+    c := _q_clean(t.questions->i, p_answers->i);
+    clean := clean || jsonb_build_array(c);
+    if c <> 'null'::jsonb and c = _q_correct(t.questions->i) then s := s + 1; end if;
   end loop;
-  insert into test_attempts(test_id, user_id, score, max_score, answers)
-  values (p_id, uid, s, n, coalesce((select jsonb_agg(case when jsonb_typeof(p_answers->k) = 'number' then p_answers->k else 'null'::jsonb end order by k)
-                                     from generate_series(0, n - 1) k), '[]'::jsonb));
+  insert into test_attempts(test_id, user_id, score, max_score, answers) values (p_id, uid, s, n, clean);
   earned := s * 10;
   perform _award(uid, earned, 'test', t.title);
   perform _touch(uid);
   ach := _check_achievements(uid);
-  select jsonb_agg((q->>'answer')::int order by k) into correct from jsonb_array_elements(t.questions) with ordinality x(q, k);
-  return jsonb_build_object('score', s, 'max_score', n, 'xp', earned, 'bonus', 0, 'correct', correct, 'achievements', ach);
+  return jsonb_build_object('score', s, 'max_score', n, 'xp', earned, 'bonus', 0, 'achievements', ach,
+    'correct', (select jsonb_agg(_q_correct(q) order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)),
+    'explain', (select jsonb_agg(nullif(q->>'explain', '') order by k) from jsonb_array_elements(t.questions) with ordinality x(q, k)));
 end $$;
 
 -- Rating by survey/test points among all students.
@@ -1093,6 +1140,23 @@ revoke execute on function public._missions(uuid) from public, anon, authenticat
 revoke execute on function public._require_student() from public, anon, authenticated;
 grant execute on function public.username_available(text) to anon, authenticated;
 
+-- =====================================================================
+-- 9. v5: multi-answer questions + AI explanations for wrong answers
+--    (the "ai-explain" Edge Function writes a cached explanation per question)
+-- =====================================================================
+
+-- Old single-answer tests keep working: a missing "type" means 'single'.
+-- Stores one explanation without touching the rest of the test. Called only by the
+-- Edge Function with the service-role key, never from the browser.
+create or replace function public._set_explain(p_test uuid, p_index int, p_text text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update tests set questions = jsonb_set(questions, array[p_index::text, 'explain'], to_jsonb(left(trim(p_text), 2000)))
+  where id = p_test and p_index >= 0 and p_index < jsonb_array_length(questions)
+    and coalesce(questions->p_index->>'explain', '') = '';
+end $$;
+revoke all on function public._set_explain(uuid, int, text) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------
 -- INFOLAKTIKA: Data API рұқсаттары.
 -- Жаңа Supabase жобаларында public кестелері anon/authenticated рөлдеріне
@@ -1152,5 +1216,10 @@ grant execute on function public.rate_comic(uuid, int, text) to authenticated;
 grant execute on function public.send_suggestion(text, uuid, text) to authenticated;
 grant execute on function public.admin_comic_ratings() to authenticated;
 grant execute on function public.admin_comic_reviews(uuid) to authenticated;
+
+-- Edge Function "ai-explain" (service role): reads tests/attempts, stores explanations.
+grant usage on schema public to service_role;
+grant select on public.tests, public.test_attempts, public.profiles to service_role;
+grant execute on function public._set_explain(uuid, int, text) to service_role;
 
 notify pgrst, 'reload schema';

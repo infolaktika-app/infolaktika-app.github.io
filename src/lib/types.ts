@@ -208,7 +208,12 @@ export interface SignUpInput {
 
 export type ProfilePatch = Partial<Pick<Profile, 'first_name' | 'last_name' | 'avatar' | 'stream'>>;
 
-export interface TestQuestion { q: string; options: string[]; answer: number }
+export type QuestionType = 'single' | 'multi';
+/** single: `answer` is the correct option; multi: `answers` lists every correct option. `explain` is shown after the attempt. */
+export interface TestQuestion { q: string; options: string[]; type?: QuestionType; answer: number; answers?: number[]; explain?: string | null }
+/** A student's answer: option index (single), list of indexes (multi) or null. */
+export type TestAnswer = number | number[] | null;
+export type TestCorrect = number | number[];
 
 export interface Test {
   id: string;
@@ -232,17 +237,17 @@ export interface MyTestRow {
   done_at: string | null;
 }
 
-export interface TestAttempt { score: number; max_score: number; answers: (number | null)[]; correct: number[]; created_at: string }
+export interface TestAttempt { score: number; max_score: number; answers: TestAnswer[]; correct: TestCorrect[]; explain?: (string | null)[]; created_at: string }
 
 export interface TestForStudent {
   id: string;
   title: string;
   description: string;
-  questions: { q: string; options: string[] }[];
+  questions: { q: string; options: string[]; type?: QuestionType }[];
   attempt: TestAttempt | null;
 }
 
-export interface TestSubmitResult extends RewardResult { score: number; max_score: number; correct: number[] }
+export interface TestSubmitResult extends RewardResult { score: number; max_score: number; correct: TestCorrect[]; explain?: (string | null)[] }
 
 export interface GroupRatingRow {
   rank: number;

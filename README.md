@@ -116,3 +116,21 @@ src/components/          UI, SVG illustrations, cards
 ## Note
 
 Game results are calculated in the browser, and the server clamps scores to the allowed range (`0…max`). That is the usual compromise for client-side educational games.
+
+
+## AI explanations for surveys (v5)
+
+Surveys support **single-answer** and **multi-answer** questions. After submitting, a student sees which
+questions were wrong, and under each wrong one a short AI explanation in Kazakh.
+
+1. Run the whole new `supabase/schema.sql` in *SQL Editor* (safe to re-run).
+2. Get a free Gemini key at https://aistudio.google.com/apikey (or use an Anthropic key).
+3. Supabase → *Edge Functions* → *Secrets*: add `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`).
+   Optional `AI_MODEL` overrides the model name.
+4. Supabase → *Edge Functions* → *Deploy a new function* → *Via Editor*, name it exactly `ai-explain`,
+   paste `supabase/functions/ai-explain/index.ts`, *Deploy*.
+   (Or with the CLI: `supabase functions deploy ai-explain`.)
+
+Each question's explanation is generated once, then cached in the test, so the AI is not called again
+for the same question. The admin can also write or generate explanations in the test editor.
+If the question, options or correct answer change, an unchanged old explanation is cleared automatically.

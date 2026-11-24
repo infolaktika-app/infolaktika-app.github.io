@@ -2,7 +2,7 @@ import type {
   Achievement, AdminStats, Book, Comic, ContentInput, DailyChallenge, Game, GameResult, ItemType,
   LeaderRow, MyStats, Notification, Profile, ReadingProgress, RewardResult, Settings, SignUpInput,
   StudentDetail, StudentRow, ProfilePatch, MyTestRow, TestForStudent, TestSubmitResult, GroupRatingRow,
-  Test, TestResultRow, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
+  Test, TestResultRow, TestAnswer, TestQuestion, Material, MaterialInput, AdminUserRow, ComicReview, ComicRatingRow, ComicReviewRow,
   Suggestion, SuggestionInput,
 } from './types';
 
@@ -33,7 +33,9 @@ export interface Api {
   // surveys / tests (students)
   myTests(): Promise<MyTestRow[]>;
   getTest(id: string): Promise<TestForStudent>;
-  submitTest(id: string, answers: (number | null)[]): Promise<TestSubmitResult>;
+  submitTest(id: string, answers: TestAnswer[]): Promise<TestSubmitResult>;
+  /** AI explanation of one question (after the student has submitted). Cached on the server. */
+  explainQuestion(testId: string, index: number): Promise<string>;
   testRating(): Promise<GroupRatingRow[]>;
 
   // comic ratings (students rate a comic they finished)
@@ -53,6 +55,8 @@ export interface Api {
   saveTest(t: Partial<Test> & Pick<Test, 'title' | 'description' | 'questions' | 'published'>): Promise<void>;
   deleteTest(id: string): Promise<void>;
   testResults(id: string): Promise<TestResultRow[]>;
+  /** Admin: draft an AI explanation for a question in the editor (not saved). */
+  draftExplain(q: TestQuestion): Promise<string>;
 
   listComics(): Promise<Comic[]>;
   getComic(id: string): Promise<Comic | null>;
@@ -121,7 +125,10 @@ export function friendlyError(e: unknown): string {
   if (/already registered|already exists|duplicate key.*username/i.test(msg)) return 'Бұл логин бос емес. Басқасын таңда.';
   if (/test already answered/i.test(msg)) return 'Бұл сауалнама бұрын тапсырылған.';
   if (/test not found/i.test(msg)) return 'Сауалнама табылмады.';
-  if (/invalid question|questions/i.test(msg)) return 'Әр сұрақта мәтін, 4 жауап нұсқасы және бір дұрыс жауап болуы керек.';
+  if (/ai not configured/i.test(msg)) return 'ИИ әлі қосылмаған: Supabase-та AI кілтін орнату керек.';
+  if (/ai error|Failed to send a request to the Edge Function|Edge Function returned/i.test(msg)) return 'ИИ түсіндірмесін алу мүмкін болмады. Кейінірек қайталаңыз.';
+  if (/multi-answer/i.test(msg)) return 'Бірнеше жауапты сұрақта кемінде бір дұрыс жауап белгіленуі керек.';
+  if (/invalid question|questions/i.test(msg)) return 'Әр сұрақта мәтін, 4 жауап нұсқасы және дұрыс жауап болуы керек.';
   if (/finish the comic first/i.test(msg)) return 'Бағалау үшін комиксті соңына дейін оқы.';
   if (/invalid rating/i.test(msg)) return 'Бағаны 1-ден 5-ке дейін таңда.';
   if (/suggestion too short/i.test(msg)) return 'Ұсынысты толығырақ жаз (кемінде 3 таңба).';

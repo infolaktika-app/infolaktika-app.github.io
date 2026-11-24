@@ -28,6 +28,18 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     return data as T;
   }
 
+  // "ai-explain" Edge Function (supabase/functions/ai-explain). Returns the explanation text.
+  async function invokeAi(body: Record<string, unknown>): Promise<string> {
+    const { data, error } = await sb.functions.invoke('ai-explain', { body });
+    if (error) {
+      let msg = error.message;
+      try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep message */ }
+      throw new Error(msg);
+    }
+    if (!data?.explain) throw new Error('ai error: empty answer');
+    return data.explain as string;
+  }
+
   const isStatic = (p: string | null | undefined) => !!p && p.startsWith('sample/');
 
   async function uploadFiles(kind: 'comics' | 'books', id: string, input: ContentInput) {
@@ -141,6 +153,7 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
     myTests: () => rpc('my_tests'),
     getTest: (id) => rpc('get_test', { p_id: id }),
     submitTest: (id, answers) => rpc('submit_test', { p_id: id, p_answers: answers }),
+    explainQuestion: (testId, index) => invokeAi({ test_id: testId, index }),
     testRating: () => rpc('test_rating'),
 
     async myComicReview(comicId) {
@@ -195,6 +208,7 @@ export function createSupabaseApi(url: string, anonKey: string, emailDomain: str
       check(await sb.from('tests').delete().eq('id', id));
     },
     testResults: (id) => rpc('admin_test_results', { p_test: id }),
+    draftExplain: (q) => invokeAi({ question: q }),
 
     async listComics() {
       return check(await sb.from('comics').select('*').order('created_at', { ascending: false })) as Comic[];

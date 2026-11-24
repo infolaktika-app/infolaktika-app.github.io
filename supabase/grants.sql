@@ -57,4 +57,9 @@ grant execute on function public.send_suggestion(text, uuid, text) to authentica
 grant execute on function public.admin_comic_ratings() to authenticated;
 grant execute on function public.admin_comic_reviews(uuid) to authenticated;
 
+-- Edge Function "ai-explain" (service role): reads tests/attempts, stores explanations.
+grant usage on schema public to service_role;
+grant select on public.tests, public.test_attempts, public.profiles to service_role;
+grant execute on function public._set_explain(uuid, int, text) to service_role;
+
 notify pgrst, 'reload schema';
